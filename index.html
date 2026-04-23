@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Three.js WebGPU Instancing + TSL</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg-1: #0e1624;
+      --bg-2: #1b2636;
+      --text: #e7eef8;
+      --muted: #98a9c1;
+      --panel: rgba(12, 19, 30, 0.82);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 600px at 20% -10%, #294363 0%, transparent 60%),
+        radial-gradient(800px 500px at 90% 10%, #1f324f 0%, transparent 55%),
+        linear-gradient(160deg, var(--bg-1), var(--bg-2));
+      overflow: hidden;
+    }
+
+    #app {
+      position: fixed;
+      inset: 0;
+    }
+
+    #hud {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 2;
+      padding: 12px 14px;
+      border: 1px solid rgba(150, 180, 220, 0.28);
+      border-radius: 10px;
+      background: var(--panel);
+      backdrop-filter: blur(8px);
+      box-shadow: 0 10px 26px rgba(0, 0, 0, 0.34);
+    }
+
+    #hud h1 {
+      margin: 0 0 4px;
+      font-size: 14px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    #hud p {
+      margin: 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    #regenerate {
+      margin-top: 10px;
+      width: 100%;
+      padding: 6px 10px;
+      border: 1px solid rgba(150, 180, 220, 0.4);
+      border-radius: 6px;
+      background: rgba(40, 70, 110, 0.6);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    #regenerate:hover {
+      background: rgba(60, 100, 160, 0.8);
+    }
+
+    #message {
+      position: fixed;
+      inset: auto 16px 16px;
+      z-index: 2;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 180, 180, 0.4);
+      background: rgba(55, 20, 20, 0.8);
+      color: #ffd6d6;
+      font-size: 12px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="hud">
+    <h1>WebGPU Instancing</h1>
+    <p>1000 objects, 2 box shapes, 3 orientation matrices (TSL shader)</p>
+    <button id="regenerate">Regenerate instances</button>
+  </div>
+  <div id="message"></div>
+
+  <script type="module">
+    import * as THREE from "https://esm.sh/three@0.172.0/webgpu";
+    import {
+      Fn,
+      attribute,
+      positionLocal,
+      uniformArray,
+      vec3,
+      vec4
+    } from "https://esm.sh/three@0.172.0/tsl";
+    import { OrbitControls } from "https://esm.sh/three@0.172.0/examples/jsm/controls/OrbitControls.js";
+
+    const TOTAL_INSTANCES = 1000;
+    const ORIENTATION_COUNT = 3;
+
+    const app = document.getElementById("app");
+    const messageEl = document.getElementById("message");
+
+    const showMessage = (text) => {
+      messageEl.textContent = text;
+      messageEl.style.display = "block";
+    };
+
+    if (!navigator.gpu) {
+      showMessage("WebGPU is not available in this browser. Use a recent Chromium-based browser with WebGPU enabled.");
+      throw new Error("WebGPU not supported");
+    }
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0f1929);
+    scene.fog = new THREE.Fog(0x0f1929, 22, 85);
+
+    const camera = new THREE.PerspectiveCamera(56, window.innerWidth / window.innerHeight, 0.1, 250);
+    camera.position.set(16, 14, 16);
+    camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGPURenderer({ antialias: true });
+    await renderer.init();
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    app.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 0, 0);
+    controls.enableDamping = true;
+
+    const ambient = new THREE.AmbientLight(0x8aa9d6, 0.45);
+    const key = new THREE.DirectionalLight(0xf7f2e7, 1.2);
+    key.position.set(12, 18, 10);
+    scene.add(ambient, key);
+
+    const grid = new THREE.GridHelper(50, 50, 0xffffff, 0xffffff);
+    // grid.position.y = -7;
+    scene.add(grid);
+
+    const orientationMatrices = buildOrientationMatrices();
+    // Expose the CPU-side rotation matrices to the shader as a uniform array.
+    const orientationUniform = uniformArray(orientationMatrices);
+    const colorPalette = uniformArray([
+      new THREE.Vector3(0.2, 0.72, 0.98),
+      new THREE.Vector3(0.96, 0.2, 0.16),
+      new THREE.Vector3(0.88, 0.96, 0.32),
+      new THREE.Vector3(0.7, 0.3, 1.0)
+    ]);
+
+    // Read the per-instance orientation index stored in instanced vertex data.
+    const orientationIndexNode = attribute("orientationIndex", "float");
+    const instanceTranslationNode = attribute("instanceTranslation", "vec3");
+    const colorIndexNode = attribute("colorIndex", "float");
+
+    // Build a TSL node graph that rotates each local vertex by the matrix
+    // selected from the uniform array for the current instance.
+    const rotatedPositionNode = Fn(() => {
+      // Convert the float attribute to an integer so it can index the uniform array.
+      const orientationMat = orientationUniform.element(orientationIndexNode.toInt());
+      // Promote the local vertex position to vec4, rotate it, then add translation.
+      return orientationMat.mul(vec4(positionLocal, 1.0)).xyz.add(instanceTranslationNode);
+    })();
+
+    // Read color from a small palette indexed by per-instance colorIndex.
+    const indexedColorNode = colorPalette.element(colorIndexNode.toInt());
+
+    const sharedMaterial = new THREE.MeshPhongNodeMaterial({
+      shininess: 55,
+      specular: new THREE.Color(0x7288a5)
+    });
+    // Use one node material for both shape draws; color still comes from colorIndex.
+    sharedMaterial.positionNode = rotatedPositionNode;
+    sharedMaterial.colorNode = indexedColorNode;
+
+    const boxGeoA = new THREE.BoxGeometry(0.22, 2.0, 0.22);
+    const boxGeoB = new THREE.BoxGeometry(1.9, 0.24, 0.85);
+
+    // Pre-allocate both meshes at maximum capacity so the GPU buffer never
+    // needs to be reallocated when instances are regenerated.
+    const meshA = new THREE.InstancedMesh(boxGeoA, sharedMaterial, TOTAL_INSTANCES);
+    const meshB = new THREE.InstancedMesh(boxGeoB, sharedMaterial, TOTAL_INSTANCES);
+
+    // Pre-allocate the orientationIndex attribute buffers at full capacity.
+    // The same typed arrays are reused on every refresh; only needsUpdate is toggled.
+    const orientBufA = new Float32Array(TOTAL_INSTANCES);
+    const orientBufB = new Float32Array(TOTAL_INSTANCES);
+    const translationBufA = new Float32Array(TOTAL_INSTANCES * 3);
+    const translationBufB = new Float32Array(TOTAL_INSTANCES * 3);
+    const colorIndexBufA = new Float32Array(TOTAL_INSTANCES);
+    const colorIndexBufB = new Float32Array(TOTAL_INSTANCES);
+    // The attribute name must match attribute("orientationIndex", "float") in TSL.
+    boxGeoA.setAttribute("orientationIndex", new THREE.InstancedBufferAttribute(orientBufA, 1));
+    boxGeoB.setAttribute("orientationIndex", new THREE.InstancedBufferAttribute(orientBufB, 1));
+    boxGeoA.setAttribute("instanceTranslation", new THREE.InstancedBufferAttribute(translationBufA, 3));
+    boxGeoB.setAttribute("instanceTranslation", new THREE.InstancedBufferAttribute(translationBufB, 3));
+    boxGeoA.setAttribute("colorIndex", new THREE.InstancedBufferAttribute(colorIndexBufA, 1));
+    boxGeoB.setAttribute("colorIndex", new THREE.InstancedBufferAttribute(colorIndexBufB, 1));
+
+    // Instance matrices remain identity because translation is now provided by
+    // instanceTranslation in the shader.
+    initializeIdentityInstanceMatrices(meshA, TOTAL_INSTANCES);
+    initializeIdentityInstanceMatrices(meshB, TOTAL_INSTANCES);
+
+    // Populate with the initial set of instances.
+    refreshInstances();
+    scene.add(meshA, meshB);
+
+    document.getElementById("regenerate").addEventListener("click", refreshInstances);
+
+    window.addEventListener("resize", onResize);
+
+    renderer.setAnimationLoop(() => {
+      controls.update();
+      renderer.render(scene, camera);
+    });
+
+    function onResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function buildOrientationMatrices() {
+      const eulers = [
+        new THREE.Euler(1.0, 1.0, 0),
+        new THREE.Euler(1.0, 2.0, 1.0),
+        new THREE.Euler(0, 1.0, 3.0)
+      ];
+
+      return eulers.map((euler) => new THREE.Matrix4().makeRotationFromEuler(euler));
+    }
+
+    function buildInstanceLayout(count) {
+      const shapeA = [];
+      const shapeB = [];
+
+      for (let i = 0; i < count; i += 1) {
+        // Generate one CPU-side position per instance.
+        const position = new THREE.Vector3(
+          THREE.MathUtils.randFloatSpread(36),
+          THREE.MathUtils.randFloatSpread(10),
+          THREE.MathUtils.randFloatSpread(36)
+        );
+
+        // This integer is the compact orientation payload that gets uploaded to
+        // the GPU and used to index the orientation uniform array in TSL.
+        const orientationIndex = Math.floor(Math.random() * ORIENTATION_COUNT);
+        const colorIndexA = Math.random() < 0.9 ? 0 : 2;
+        const colorIndexB = Math.random() < 0.9 ? 1 : 3;
+
+        if (Math.random() < 0.5) {
+          shapeA.push({ position, orientationIndex, colorIndex: colorIndexA });
+        } else {
+          shapeB.push({ position, orientationIndex, colorIndex: colorIndexB });
+        }
+      }
+
+      return { shapeA, shapeB };
+    }
+
+    function refreshInstances() {
+      // Generate a fresh set of CPU-side instance records.
+      const layout = buildInstanceLayout(TOTAL_INSTANCES);
+
+      // Write shape A instances into the existing pre-allocated buffers.
+      meshA.count = layout.shapeA.length;
+      for (let i = 0; i < layout.shapeA.length; i += 1) {
+        const { position, orientationIndex, colorIndex } = layout.shapeA[i];
+        // Write the orientation index directly into the typed array;
+        // no new buffer is created, so no GPU memory is reallocated.
+        orientBufA[i] = orientationIndex;
+        const base = i * 3;
+        translationBufA[base] = position.x;
+        translationBufA[base + 1] = position.y;
+        translationBufA[base + 2] = position.z;
+        colorIndexBufA[i] = colorIndex;
+      }
+      boxGeoA.getAttribute("orientationIndex").needsUpdate = true;
+      boxGeoA.getAttribute("instanceTranslation").needsUpdate = true;
+      boxGeoA.getAttribute("colorIndex").needsUpdate = true;
+
+      // Write shape B instances into the existing pre-allocated buffers.
+      meshB.count = layout.shapeB.length;
+      for (let i = 0; i < layout.shapeB.length; i += 1) {
+        const { position, orientationIndex, colorIndex } = layout.shapeB[i];
+        orientBufB[i] = orientationIndex;
+        const base = i * 3;
+        translationBufB[base] = position.x;
+        translationBufB[base + 1] = position.y;
+        translationBufB[base + 2] = position.z;
+        colorIndexBufB[i] = colorIndex;
+      }
+      boxGeoB.getAttribute("orientationIndex").needsUpdate = true;
+      boxGeoB.getAttribute("instanceTranslation").needsUpdate = true;
+      boxGeoB.getAttribute("colorIndex").needsUpdate = true;
+    }
+
+    function initializeIdentityInstanceMatrices(instancedMesh, count) {
+      const identity = new THREE.Matrix4();
+
+      for (let i = 0; i < count; i += 1) {
+        instancedMesh.setMatrixAt(i, identity);
+      }
+
+      instancedMesh.instanceMatrix.needsUpdate = true;
+    }
+  </script>
+</body>
+</html>
