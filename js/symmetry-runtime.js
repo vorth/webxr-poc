@@ -9,7 +9,7 @@ import { THREE } from "./scene.js";
 
 export const INITIAL_SHAPE_CAPACITY = 64;
 
-export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSelectEl })
+export function createSymmetryRuntime( scene )
 {
   const colorMatrices = [
     new THREE.Vector3(0.2, 0.72, 0.98),
@@ -53,7 +53,6 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
     };
 
     symmetryGroups.set(groupId, group);
-    refreshHudSelectors();
     return group;
   }
 
@@ -66,7 +65,6 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
     if (group.activeStyleId === null) {
       group.activeStyleId = styleId;
     }
-    refreshHudSelectors();
   }
 
   function registerShape(groupId, styleId, slotId, geometry) {
@@ -124,7 +122,6 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
     ensureGroupHasActiveStyle(nextGroup);
     addGroupMeshesToScene(nextGroup);
     activeGroupId = groupId;
-    updateHudForGroup(nextGroup);
 
     if (discardUnusedShaders) {
       for (const group of symmetryGroups.values()) {
@@ -133,8 +130,6 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
         }
       }
     }
-
-    refreshHudSelectors();
   }
 
   function setDiscardInactiveShaders(enabled) {
@@ -151,8 +146,6 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
     if (group.gpu) {
       swapGeometriesForStyle(group, styleId);
     }
-    updateHudForGroup(group);
-    refreshHudSelectors();
   }
 
   function swapGeometriesForStyle(group, styleId) {
@@ -493,6 +486,14 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
     return style;
   }
 
+  function getGroupIds() {
+    return [...symmetryGroups.keys()];
+  }
+
+  function getActiveGroupId() {
+    return activeGroupId;
+  }
+
   function getActiveGroup() {
     if (activeGroupId === null) {
       throw new Error("No active symmetry group. Call switchSymmetryGroup() first.");
@@ -575,54 +576,6 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
     if (group.gpu) {
       swapGeometriesForStyle(group, styleId);
     }
-    updateHudForGroup(group);
-  }
-
-  function updateHudForGroup(group) {
-    if (hudDesc) {
-      const styleText = group.activeStyleId ? `active style '${group.activeStyleId}'` : "no active style";
-      hudDesc.textContent = `${group.id}: ${group.orientations.length} orientations, ${styleText}`;
-    }
-  }
-
-  function refreshHudSelectors() {
-    if (groupSelectEl) {
-      const previous = groupSelectEl.value;
-      groupSelectEl.innerHTML = "";
-      for (const groupId of symmetryGroups.keys()) {
-        const option = document.createElement("option");
-        option.value = groupId;
-        option.textContent = groupId;
-        groupSelectEl.appendChild(option);
-      }
-      if (activeGroupId && symmetryGroups.has(activeGroupId)) {
-        groupSelectEl.value = activeGroupId;
-      } else if (previous && symmetryGroups.has(previous)) {
-        groupSelectEl.value = previous;
-      }
-    }
-
-    if (!styleSelectEl) {
-      return;
-    }
-
-    styleSelectEl.innerHTML = "";
-    const group = activeGroupId ? symmetryGroups.get(activeGroupId) : null;
-    if (!group) {
-      styleSelectEl.disabled = true;
-      return;
-    }
-
-    for (const styleId of group.styles.keys()) {
-      const option = document.createElement("option");
-      option.value = styleId;
-      option.textContent = styleId;
-      styleSelectEl.appendChild(option);
-    }
-    styleSelectEl.disabled = group.styles.size === 0;
-    if (group.activeStyleId && group.styles.has(group.activeStyleId)) {
-      styleSelectEl.value = group.activeStyleId;
-    }
   }
 
   function listShapeKeys(group, styleId) {
@@ -645,10 +598,8 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
     removeInstance,
     removeAllInstances,
     clearActiveInstances,
-    refreshHudSelectors,
-
-    // These are only needed for the demo's random population function; they are
-    //   not generally useful and may be removed in the future
+    getGroupIds,
+    getActiveGroupId,
     getActiveGroup,
     listShapeKeys,
   };

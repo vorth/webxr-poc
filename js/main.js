@@ -22,12 +22,7 @@ if (!navigator.gpu) {
 
 const { scene, camera, renderer, controls } = await initScene(app);
 
-const runtime = createSymmetryRuntime({
-  scene,
-  hudDesc,
-  groupSelectEl,
-  styleSelectEl
-});
+const runtime = createSymmetryRuntime( scene );
 
 runtime.registerSymmetryGroup("tilted-bars", [
   new THREE.Euler(1.0, 1.0, 0),
@@ -55,7 +50,7 @@ runtime.registerShape("axis-aligned", "planks", "slab", new THREE.BoxGeometry(2.
 
 runtime.switchSymmetryGroup("tilted-bars");
 populateRandomInstances(RANDOM_INSTANCE_COUNT);
-runtime.refreshHudSelectors();
+refreshUI();
 
 if (groupSelectEl) {
   groupSelectEl.addEventListener("change", (event) => {
@@ -63,6 +58,7 @@ if (groupSelectEl) {
     try {
       runtime.switchSymmetryGroup(groupId);
       populateRandomInstances(RANDOM_INSTANCE_COUNT);
+      refreshUI();
     } catch (error) {
       showMessage(error.message);
     }
@@ -74,6 +70,7 @@ if (styleSelectEl) {
     const styleId = event.target.value;
     try {
       runtime.switchStyle(styleId);
+      refreshUI();
     } catch (error) {
       showMessage(error.message);
     }
@@ -113,6 +110,52 @@ function onResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
+
+function refreshUI() {
+  if (groupSelectEl) {
+    const previous = groupSelectEl.value;
+    groupSelectEl.innerHTML = "";
+    for (const groupId of runtime.getGroupIds()) {
+      const option = document.createElement("option");
+      option.value = groupId;
+      option.textContent = groupId;
+      groupSelectEl.appendChild(option);
+    }
+    const activeGroupId = runtime.getActiveGroupId();
+    if (activeGroupId) {
+      groupSelectEl.value = activeGroupId;
+    } else if (previous) {
+      groupSelectEl.value = previous;
+    }
+  }
+
+  if (styleSelectEl) {
+    styleSelectEl.innerHTML = "";
+    const activeGroup = runtime.getActiveGroupId() ? runtime.getActiveGroup() : null;
+    if (!activeGroup) {
+      styleSelectEl.disabled = true;
+    } else {
+      for (const styleId of activeGroup.styles.keys()) {
+        const option = document.createElement("option");
+        option.value = styleId;
+        option.textContent = styleId;
+        styleSelectEl.appendChild(option);
+      }
+      styleSelectEl.disabled = activeGroup.styles.size === 0;
+      if (activeGroup.activeStyleId && activeGroup.styles.has(activeGroup.activeStyleId)) {
+        styleSelectEl.value = activeGroup.activeStyleId;
+      }
+    }
+  }
+
+  if (hudDesc) {
+    const activeGroup = runtime.getActiveGroupId() ? runtime.getActiveGroup() : null;
+    if (activeGroup) {
+      const styleText = activeGroup.activeStyleId ? `active style '${activeGroup.activeStyleId}'` : "no active style";
+      hudDesc.textContent = `${activeGroup.id}: ${activeGroup.orientations.length} orientations, ${styleText}`;
+    }
+  }
+}
 
 function populateRandomInstances(count)
 {
