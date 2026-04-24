@@ -116,7 +116,6 @@
     import { OrbitControls } from "https://esm.sh/three@0.172.0/examples/jsm/controls/OrbitControls.js";
 
     const TOTAL_INSTANCES = 1000;
-    const ORIENTATION_COUNT = 3;
 
     const app = document.getElementById("app");
     const messageEl = document.getElementById("message");
@@ -158,15 +157,52 @@
     // grid.position.y = -7;
     scene.add(grid);
 
-    const orientationMatrices = buildOrientationMatrices();
-    // Expose the CPU-side rotation matrices to the shader as a uniform array.
-    const orientationUniform = uniformArray(orientationMatrices);
-    const colorPalette = uniformArray([
+    // This stuff is use-case specific.
+    const shapeGeometries = [
+      new THREE.BoxGeometry(0.22, 2.0, 0.22),
+      new THREE.BoxGeometry(1.9, 0.24, 0.85)
+    ];
+    const SHAPE_COUNT = shapeGeometries.length;
+    const eulers = [
+      new THREE.Euler(1.0, 1.0, 0),
+      new THREE.Euler(1.0, 2.0, 1.0),
+      new THREE.Euler(0, 1.0, 3.0)
+    ];
+    const orientationMatrices = eulers.map((euler) => new THREE.Matrix4().makeRotationFromEuler(euler));
+    const ORIENTATION_COUNT = orientationMatrices.length;
+    const colorMatrices = [
       new THREE.Vector3(0.2, 0.72, 0.98),
       new THREE.Vector3(0.96, 0.2, 0.16),
       new THREE.Vector3(0.88, 0.96, 0.32),
       new THREE.Vector3(0.7, 0.3, 1.0)
-    ]);
+    ];
+    const COLOR_COUNT = colorMatrices.length;
+    function createInstances(count) {
+      const shapeInstances = Array.from({ length: SHAPE_COUNT }, () => []);
+
+      for (let i = 0; i < count; i += 1) {
+        // Generate one CPU-side position per instance.
+        const position = new THREE.Vector3(
+          THREE.MathUtils.randFloatSpread(36),
+          THREE.MathUtils.randFloatSpread(10),
+          THREE.MathUtils.randFloatSpread(36)
+        );
+
+        // This integer is the compact orientation payload that gets uploaded to
+        // the GPU and used to index the orientation uniform array in TSL.
+        const orientationIndex = Math.floor(Math.random() * ORIENTATION_COUNT);
+        const shapeIndex = Math.floor(Math.random() * SHAPE_COUNT);
+        const colorIndex = Math.floor(Math.random() * COLOR_COUNT);
+        shapeInstances[shapeIndex].push({ position, orientationIndex, colorIndex });
+      }
+
+      return shapeInstances;
+    }
+
+
+    // Expose the CPU-side matrices to the shader as uniform arrays.
+    const orientationUniform = uniformArray(orientationMatrices);
+    const colorPalette = uniformArray(colorMatrices);
 
     // Read the per-instance orientation index stored in instanced vertex data.
     const orientationIndexNode = attribute("orientationIndex", "float");
@@ -193,38 +229,38 @@
     sharedMaterial.positionNode = rotatedPositionNode;
     sharedMaterial.colorNode = indexedColorNode;
 
-    const boxGeoA = new THREE.BoxGeometry(0.22, 2.0, 0.22);
-    const boxGeoB = new THREE.BoxGeometry(1.9, 0.24, 0.85);
 
-    // Pre-allocate both meshes at maximum capacity so the GPU buffer never
-    // needs to be reallocated when instances are regenerated.
-    const meshA = new THREE.InstancedMesh(boxGeoA, sharedMaterial, TOTAL_INSTANCES);
-    const meshB = new THREE.InstancedMesh(boxGeoB, sharedMaterial, TOTAL_INSTANCES);
+    // Keep per-shape GPU state grouped together so shape logic can be looped.
+    const shapes = shapeGeometries.map((geometry) => {
+      const mesh = new THREE.InstancedMesh(geometry, sharedMaterial, TOTAL_INSTANCES);
+      const orientBuffer = new Float32Array(TOTAL_INSTANCES);
+      const translationBuffer = new Float32Array(TOTAL_INSTANCES * 3);
+      const colorIndexBuffer = new Float32Array(TOTAL_INSTANCES);
 
-    // Pre-allocate the orientationIndex attribute buffers at full capacity.
-    // The same typed arrays are reused on every refresh; only needsUpdate is toggled.
-    const orientBufA = new Float32Array(TOTAL_INSTANCES);
-    const orientBufB = new Float32Array(TOTAL_INSTANCES);
-    const translationBufA = new Float32Array(TOTAL_INSTANCES * 3);
-    const translationBufB = new Float32Array(TOTAL_INSTANCES * 3);
-    const colorIndexBufA = new Float32Array(TOTAL_INSTANCES);
-    const colorIndexBufB = new Float32Array(TOTAL_INSTANCES);
-    // The attribute name must match attribute("orientationIndex", "float") in TSL.
-    boxGeoA.setAttribute("orientationIndex", new THREE.InstancedBufferAttribute(orientBufA, 1));
-    boxGeoB.setAttribute("orientationIndex", new THREE.InstancedBufferAttribute(orientBufB, 1));
-    boxGeoA.setAttribute("instanceTranslation", new THREE.InstancedBufferAttribute(translationBufA, 3));
-    boxGeoB.setAttribute("instanceTranslation", new THREE.InstancedBufferAttribute(translationBufB, 3));
-    boxGeoA.setAttribute("colorIndex", new THREE.InstancedBufferAttribute(colorIndexBufA, 1));
-    boxGeoB.setAttribute("colorIndex", new THREE.InstancedBufferAttribute(colorIndexBufB, 1));
+      // Instance matrices remain identity because translation is now provided by
+      // instanceTranslation in the shader.
+      const identity = new THREE.Matrix4();
+      for (let i = 0; i < TOTAL_INSTANCES; i += 1) {
+        mesh.setMatrixAt(i, identity);
+      }
+      mesh.instanceMatrix.needsUpdate = true;
 
-    // Instance matrices remain identity because translation is now provided by
-    // instanceTranslation in the shader.
-    initializeIdentityInstanceMatrices(meshA, TOTAL_INSTANCES);
-    initializeIdentityInstanceMatrices(meshB, TOTAL_INSTANCES);
+      // Attribute names must match the TSL attribute() declarations.
+      geometry.setAttribute("orientationIndex", new THREE.InstancedBufferAttribute(orientBuffer, 1));
+      geometry.setAttribute("instanceTranslation", new THREE.InstancedBufferAttribute(translationBuffer, 3));
+      geometry.setAttribute("colorIndex", new THREE.InstancedBufferAttribute(colorIndexBuffer, 1));
+
+      return {
+        mesh,
+        orientBuffer,
+        translationBuffer,
+        colorIndexBuffer
+      };
+    });
 
     // Populate with the initial set of instances.
     refreshInstances();
-    scene.add(meshA, meshB);
+    scene.add(...shapes.map((shape) => shape.mesh));
 
     document.getElementById("regenerate").addEventListener("click", refreshInstances);
 
@@ -241,89 +277,30 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
-    function buildOrientationMatrices() {
-      const eulers = [
-        new THREE.Euler(1.0, 1.0, 0),
-        new THREE.Euler(1.0, 2.0, 1.0),
-        new THREE.Euler(0, 1.0, 3.0)
-      ];
-
-      return eulers.map((euler) => new THREE.Matrix4().makeRotationFromEuler(euler));
-    }
-
-    function buildInstanceLayout(count) {
-      const shapeA = [];
-      const shapeB = [];
-
-      for (let i = 0; i < count; i += 1) {
-        // Generate one CPU-side position per instance.
-        const position = new THREE.Vector3(
-          THREE.MathUtils.randFloatSpread(36),
-          THREE.MathUtils.randFloatSpread(10),
-          THREE.MathUtils.randFloatSpread(36)
-        );
-
-        // This integer is the compact orientation payload that gets uploaded to
-        // the GPU and used to index the orientation uniform array in TSL.
-        const orientationIndex = Math.floor(Math.random() * ORIENTATION_COUNT);
-        const colorIndexA = Math.random() < 0.9 ? 0 : 2;
-        const colorIndexB = Math.random() < 0.9 ? 1 : 3;
-
-        if (Math.random() < 0.5) {
-          shapeA.push({ position, orientationIndex, colorIndex: colorIndexA });
-        } else {
-          shapeB.push({ position, orientationIndex, colorIndex: colorIndexB });
-        }
-      }
-
-      return { shapeA, shapeB };
-    }
-
     function refreshInstances() {
       // Generate a fresh set of CPU-side instance records.
-      const layout = buildInstanceLayout(TOTAL_INSTANCES);
+      const layoutByShape = createInstances(TOTAL_INSTANCES);
 
-      // Write shape A instances into the existing pre-allocated buffers.
-      meshA.count = layout.shapeA.length;
-      for (let i = 0; i < layout.shapeA.length; i += 1) {
-        const { position, orientationIndex, colorIndex } = layout.shapeA[i];
-        // Write the orientation index directly into the typed array;
-        // no new buffer is created, so no GPU memory is reallocated.
-        orientBufA[i] = orientationIndex;
-        const base = i * 3;
-        translationBufA[base] = position.x;
-        translationBufA[base + 1] = position.y;
-        translationBufA[base + 2] = position.z;
-        colorIndexBufA[i] = colorIndex;
-      }
-      boxGeoA.getAttribute("orientationIndex").needsUpdate = true;
-      boxGeoA.getAttribute("instanceTranslation").needsUpdate = true;
-      boxGeoA.getAttribute("colorIndex").needsUpdate = true;
+      shapes.forEach((shape, shapeIndex) => {
+        const instances = layoutByShape[shapeIndex];
+        shape.mesh.count = instances.length;
 
-      // Write shape B instances into the existing pre-allocated buffers.
-      meshB.count = layout.shapeB.length;
-      for (let i = 0; i < layout.shapeB.length; i += 1) {
-        const { position, orientationIndex, colorIndex } = layout.shapeB[i];
-        orientBufB[i] = orientationIndex;
-        const base = i * 3;
-        translationBufB[base] = position.x;
-        translationBufB[base + 1] = position.y;
-        translationBufB[base + 2] = position.z;
-        colorIndexBufB[i] = colorIndex;
-      }
-      boxGeoB.getAttribute("orientationIndex").needsUpdate = true;
-      boxGeoB.getAttribute("instanceTranslation").needsUpdate = true;
-      boxGeoB.getAttribute("colorIndex").needsUpdate = true;
-    }
+        for (let i = 0; i < instances.length; i += 1) {
+          const { position, orientationIndex, colorIndex } = instances[i];
+          // Write the orientation index directly into the typed array;
+          // no new buffer is created, so no GPU memory is reallocated.
+          shape.orientBuffer[i] = orientationIndex;
+          const base = i * 3;
+          shape.translationBuffer[base] = position.x;
+          shape.translationBuffer[base + 1] = position.y;
+          shape.translationBuffer[base + 2] = position.z;
+          shape.colorIndexBuffer[i] = colorIndex;
+        }
 
-    function initializeIdentityInstanceMatrices(instancedMesh, count) {
-      const identity = new THREE.Matrix4();
-
-      for (let i = 0; i < count; i += 1) {
-        instancedMesh.setMatrixAt(i, identity);
-      }
-
-      instancedMesh.instanceMatrix.needsUpdate = true;
+        shape.mesh.geometry.getAttribute("orientationIndex").needsUpdate = true;
+        shape.mesh.geometry.getAttribute("instanceTranslation").needsUpdate = true;
+        shape.mesh.geometry.getAttribute("colorIndex").needsUpdate = true;
+      });
     }
   </script>
 </body>
