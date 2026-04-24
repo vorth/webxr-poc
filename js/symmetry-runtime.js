@@ -8,7 +8,7 @@ import {
 import { THREE } from "./scene.js";
 
 export const INITIAL_SHAPE_CAPACITY = 64;
-export const RANDOM_INSTANCE_COUNT = 1000;
+export const RANDOM_INSTANCE_COUNT = 10000;
 
 export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSelectEl, randomInstanceCount = RANDOM_INSTANCE_COUNT })
 {
@@ -23,10 +23,6 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
   const symmetryGroups = new Map();
   let activeGroupId = null;
   let discardInactiveShaders = false;
-
-  function shapeKey(styleId, shapeId) {
-    return `${styleId}::${shapeId}`;
-  }
 
   function registerSymmetryGroup(groupId, orientations) {
     if (symmetryGroups.has(groupId)) {
@@ -50,6 +46,7 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
       id: groupId,
       orientations: orientationMatrices,
       styles: new Map(),
+      slots: new Set(),
       activeStyleId: null,
       instancesByShape: new Map(),
       nextInstanceId: 1,
@@ -66,34 +63,44 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
     if (group.styles.has(styleId)) {
       throw new Error(`Style '${styleId}' is already registered in group '${groupId}'.`);
     }
-    group.styles.set(styleId, { id: styleId, shapes: new Map() });
+    group.styles.set(styleId, { id: styleId, geometries: new Map() });
     if (group.activeStyleId === null) {
       group.activeStyleId = styleId;
     }
     refreshHudSelectors();
   }
 
-  function registerShape(groupId, styleId, shapeId, geometry) {
+  function registerShape(groupId, styleId, slotId, geometry) {
     if (!(geometry instanceof THREE.BufferGeometry)) {
       throw new Error("Shape geometry must be a THREE.BufferGeometry.");
     }
     const group = getSymmetryGroup(groupId);
     const style = getStyle(group, styleId);
-    if (style.shapes.has(shapeId)) {
-      throw new Error(`Shape '${shapeId}' is already registered in style '${styleId}'.`);
+    if (style.geometries.has(slotId)) {
+      throw new Error(`Geometry for slot '${slotId}' is already registered in style '${styleId}'.`);
     }
 
-    style.shapes.set(shapeId, {
-      id: shapeId,
-      geometry
-    });
+    style.geometries.set(slotId, geometry);
+    group.slots.add(slotId);
 
     if (group.gpu) {
-      const key = shapeKey(styleId, shapeId);
-      const entry = createShapeEntry(styleId, shapeId, geometry, group.gpu.material);
-      group.gpu.shapeEntries.set(key, entry);
-      if (group.id === activeGroupId) {
-        scene.add(entry.mesh);
+      // Add to the geometry cache for this slot/style
+      let slotCache = group.gpu.cachedGeometries.get(slotId);
+      if (!slotCache) {
+        slotCache = new Map();
+        group.gpu.cachedGeometries.set(slotId, slotCache);
+      }
+      slotCache.set(styleId, geometry.clone());
+
+      // Create shape entry only if this is a brand-new slot
+      if (!group.gpu.shapeEntries.has(slotId)) {
+        const activeGeom = (group.activeStyleId && slotCache.get(group.activeStyleId))
+          ?? slotCache.values().next().value;
+        const entry = createShapeEntry(slotId, activeGeom, group.gpu.material);
+        group.gpu.shapeEntries.set(slotId, entry);
+        if (group.id === activeGroupId) {
+          scene.add(entry.mesh);
+        }
       }
     }
   }
@@ -147,11 +154,40 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
     if (group.activeStyleId === styleId) {
       return;
     }
-    clearGroupInstances(group);
-    setGroupMeshesCount(group, 0);
     group.activeStyleId = styleId;
+    if (group.gpu) {
+      swapGeometriesForStyle(group, styleId);
+    }
     updateHudForGroup(group);
     refreshHudSelectors();
+  }
+
+  function swapGeometriesForStyle(group, styleId) {
+    for (const [slotId, entry] of group.gpu.shapeEntries) {
+      swapBaseGeometry(entry, slotId, styleId, group.gpu.cachedGeometries);
+    }
+  }
+
+  // Move instanced attributes from the current mesh geometry to the cached geometry
+  // for newStyleId, then point the mesh at that geometry.
+  // No cloning and no disposal: the old cached geometry stays alive for future switches.
+  function swapBaseGeometry(entry, slotId, newStyleId, cachedGeometries) {
+    const slotCache = cachedGeometries.get(slotId);
+    if (!slotCache) return;
+    const newGeom = slotCache.get(newStyleId);
+    if (!newGeom) return;
+    const oldGeom = entry.mesh.geometry;
+    if (oldGeom === newGeom) return;
+
+    for (const name of ["orientationIndex", "instanceTranslation", "colorIndex"]) {
+      const attr = oldGeom.getAttribute(name);
+      if (attr) {
+        oldGeom.deleteAttribute(name);
+        newGeom.setAttribute(name, attr);
+      }
+    }
+    entry.mesh.geometry = newGeom;
+    // oldGeom is still in the cache with only base vertex data, ready for the next switch back
   }
 
   function registerColor(colorInput) {
@@ -165,8 +201,7 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
     const group = getActiveGroup();
     getStyle(group, styleId);
     ensureStyleIsActiveForInstances(group, styleId);
-    const key = shapeKey(styleId, shapeId);
-    const shapeMap = getOrCreateShapeInstanceMap(group, key);
+    const shapeMap = getOrCreateShapeInstanceMap(group, shapeId);
 
     const position = instanceOptions.position ?? new THREE.Vector3();
     const orientationIndex = normalizeOrientationIndex(group, instanceOptions.orientationIndex);
@@ -180,29 +215,27 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
       colorIndex
     });
 
-    syncShapeInstances(group, styleId, shapeId);
+    syncShapeInstances(group, shapeId);
     return id;
   }
 
   function removeInstance(styleId, shapeId, instanceId) {
     const group = getActiveGroup();
-    const key = shapeKey(styleId, shapeId);
-    const shapeMap = group.instancesByShape.get(key);
+    const shapeMap = group.instancesByShape.get(shapeId);
     if (!shapeMap) {
       return false;
     }
     const removed = shapeMap.delete(instanceId);
     if (removed) {
-      syncShapeInstances(group, styleId, shapeId);
+      syncShapeInstances(group, shapeId);
     }
     return removed;
   }
 
   function removeAllInstances(styleId, shapeId) {
     const group = getActiveGroup();
-    const key = shapeKey(styleId, shapeId);
-    group.instancesByShape.delete(key);
-    syncShapeInstances(group, styleId, shapeId);
+    group.instancesByShape.delete(shapeId);
+    syncShapeInstances(group, shapeId);
   }
 
   function clearActiveInstances() {
@@ -268,8 +301,8 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
     return material;
   }
 
-  function createShapeEntry(styleId, shapeId, sourceGeometry, material) {
-    const meshGeometry = sourceGeometry.clone();
+  // meshGeometry is a pre-cloned cached geometry; it is used directly (not cloned again)
+  function createShapeEntry(slotId, meshGeometry, material) {
     const mesh = new THREE.InstancedMesh(meshGeometry, material, INITIAL_SHAPE_CAPACITY);
     const orientBuffer = new Float32Array(INITIAL_SHAPE_CAPACITY);
     const translationBuffer = new Float32Array(INITIAL_SHAPE_CAPACITY * 3);
@@ -279,8 +312,7 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
     mesh.count = 0;
 
     return {
-      styleId,
-      shapeId,
+      slotId,
       capacity: INITIAL_SHAPE_CAPACITY,
       mesh,
       orientBuffer,
@@ -295,18 +327,32 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
     }
 
     const material = createMaterialForGroup(group);
+
+    // Pre-clone one geometry per slot per style so style switches need no allocation
+    const cachedGeometries = new Map();
+    for (const slotId of group.slots) {
+      const slotCache = new Map();
+      for (const [styleId, style] of group.styles) {
+        if (style.geometries.has(slotId)) {
+          slotCache.set(styleId, style.geometries.get(slotId).clone());
+        }
+      }
+      cachedGeometries.set(slotId, slotCache);
+    }
+
+    // Build shape entries using the active style's cached geometry
     const shapeEntries = new Map();
-    for (const [styleId, style] of group.styles) {
-      for (const [shapeId, shape] of style.shapes) {
-        const key = shapeKey(styleId, shapeId);
-        shapeEntries.set(key, createShapeEntry(styleId, shapeId, shape.geometry, material));
+    for (const slotId of group.slots) {
+      const slotCache = cachedGeometries.get(slotId);
+      if (!slotCache) continue;
+      const geom = (group.activeStyleId && slotCache.get(group.activeStyleId))
+        ?? slotCache.values().next().value;
+      if (geom) {
+        shapeEntries.set(slotId, createShapeEntry(slotId, geom, material));
       }
     }
 
-    group.gpu = {
-      material,
-      shapeEntries
-    };
+    group.gpu = { material, shapeEntries, cachedGeometries };
   }
 
   function addGroupMeshesToScene(group) {
@@ -336,21 +382,20 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
     group.instancesByShape.clear();
   }
 
-  function syncShapeInstances(group, styleId, shapeId) {
+  function syncShapeInstances(group, slotId) {
     if (!group.gpu) {
       return;
     }
-    const key = shapeKey(styleId, shapeId);
-    const entry = group.gpu.shapeEntries.get(key);
+    const entry = group.gpu.shapeEntries.get(slotId);
     if (!entry) {
-      throw new Error(`Shape '${shapeId}' in style '${styleId}' is not registered for active group '${group.id}'.`);
+      throw new Error(`Shape slot '${slotId}' is not registered for active group '${group.id}'.`);
     }
 
-    const shapeMap = group.instancesByShape.get(key);
+    const shapeMap = group.instancesByShape.get(slotId);
     const instances = shapeMap ? Array.from(shapeMap.values()) : [];
-    ensureShapeCapacity(group, key, instances.length);
+    ensureShapeCapacity(group, slotId, instances.length);
 
-    const currentEntry = group.gpu.shapeEntries.get(key);
+    const currentEntry = group.gpu.shapeEntries.get(slotId);
     currentEntry.mesh.count = instances.length;
     for (let i = 0; i < instances.length; i += 1) {
       const { position, orientationIndex, colorIndex } = instances[i];
@@ -383,17 +428,30 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
 
     const previousMesh = entry.mesh;
     const previousGeometry = previousMesh.geometry;
-    const nextGeometry = previousGeometry.clone();
+
+    // Clone from the source geometry so the new cached geom has clean base vertex data
+    const activeStyle = group.styles.get(group.activeStyleId);
+    const sourceGeom = activeStyle ? activeStyle.geometries.get(entry.slotId) : null;
+    const nextGeometry = sourceGeom ? sourceGeom.clone() : previousGeometry.clone();
+    attachAttributes(nextGeometry, nextOrient, nextTranslation, nextColor);
+
+    // Update the geometry cache: replace the active style's entry with the new geometry
+    const slotCache = group.gpu.cachedGeometries.get(entry.slotId);
+    if (slotCache && group.activeStyleId) {
+      slotCache.set(group.activeStyleId, nextGeometry);
+    }
+
     const nextMesh = new THREE.InstancedMesh(nextGeometry, group.gpu.material, expandedCapacity);
     initializeIdentityMatrices(nextMesh, expandedCapacity);
     nextMesh.count = previousMesh.count;
-    attachAttributes(nextGeometry, nextOrient, nextTranslation, nextColor);
 
     if (previousMesh.parent === scene) {
       scene.remove(previousMesh);
       scene.add(nextMesh);
     }
-    previousGeometry.dispose();
+    // The old geometry is no longer in the cache; defer disposal to avoid destroying
+    // buffers that the current frame's command buffer may still reference
+    requestAnimationFrame(() => previousGeometry.dispose());
 
     group.gpu.shapeEntries.set(key, {
       ...entry,
@@ -428,22 +486,21 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
       if (entry.mesh.parent === scene) {
         scene.remove(entry.mesh);
       }
-      entry.mesh.geometry.dispose();
+      // Geometry is owned by cachedGeometries; disposed below
+    }
+    for (const slotCache of group.gpu.cachedGeometries.values()) {
+      for (const geom of slotCache.values()) {
+        geom.dispose();
+      }
     }
     group.gpu.material.dispose();
     group.gpu = null;
   }
 
   function syncAllInstancesForGroup(group) {
-    for (const key of group.instancesByShape.keys()) {
-      const { styleId, shapeId } = parseShapeKey(key);
-      syncShapeInstances(group, styleId, shapeId);
+    for (const slotId of group.instancesByShape.keys()) {
+      syncShapeInstances(group, slotId);
     }
-  }
-
-  function parseShapeKey(key) {
-    const [styleId, shapeId] = key.split("::");
-    return { styleId, shapeId };
   }
 
   function getSymmetryGroup(groupId) {
@@ -540,9 +597,10 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
     if (group.activeStyleId === styleId) {
       return;
     }
-    clearGroupInstances(group);
-    setGroupMeshesCount(group, 0);
     group.activeStyleId = styleId;
+    if (group.gpu) {
+      swapGeometriesForStyle(group, styleId);
+    }
     updateHudForGroup(group);
   }
 
@@ -603,12 +661,8 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
 
   function listShapeKeys(group, styleId) {
     const keys = [];
-    const style = group.styles.get(styleId);
-    if (!style) {
-      return keys;
-    }
-    for (const shapeId of style.shapes.keys()) {
-      keys.push({ styleId, shapeId });
+    for (const slotId of group.slots) {
+      keys.push({ styleId, shapeId: slotId });
     }
     return keys;
   }

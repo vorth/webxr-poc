@@ -33,6 +33,9 @@ runtime.registerSymmetryGroup("tilted-bars", [
   new THREE.Euler(1.0, 2.0, 1.0),
   new THREE.Euler(0, 1.0, 3.0)
 ]);
+runtime.registerStyle("tilted-bars", "rounded");
+runtime.registerShape("tilted-bars", "rounded", "thin", new THREE.CylinderGeometry(0.12, 0.12, 2.0, 8));
+runtime.registerShape("tilted-bars", "rounded", "wide", new THREE.CylinderGeometry(0.85, 0.85, 0.22, 10));
 runtime.registerStyle("tilted-bars", "default");
 runtime.registerShape("tilted-bars", "default", "thin", new THREE.BoxGeometry(0.22, 2.0, 0.22));
 runtime.registerShape("tilted-bars", "default", "wide", new THREE.BoxGeometry(1.9, 0.24, 0.85));
@@ -45,6 +48,9 @@ runtime.registerSymmetryGroup("axis-aligned", [
 runtime.registerStyle("axis-aligned", "beams");
 runtime.registerShape("axis-aligned", "beams", "column", new THREE.BoxGeometry(0.3, 2.2, 0.3));
 runtime.registerShape("axis-aligned", "beams", "slab", new THREE.BoxGeometry(2.1, 0.2, 0.75));
+runtime.registerStyle("axis-aligned", "planks");
+runtime.registerShape("axis-aligned", "planks", "column", new THREE.CylinderGeometry(0.15, 0.15, 2.2, 8));
+runtime.registerShape("axis-aligned", "planks", "slab", new THREE.BoxGeometry(2.5, 0.12, 1.0));
 
 runtime.switchSymmetryGroup("tilted-bars");
 runtime.populateRandomInstances(RANDOM_INSTANCE_COUNT);
