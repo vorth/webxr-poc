@@ -8,9 +8,8 @@ import {
 import { THREE } from "./scene.js";
 
 export const INITIAL_SHAPE_CAPACITY = 64;
-export const RANDOM_INSTANCE_COUNT = 10000;
 
-export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSelectEl, randomInstanceCount = RANDOM_INSTANCE_COUNT })
+export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSelectEl })
 {
   const colorMatrices = [
     new THREE.Vector3(0.2, 0.72, 0.98),
@@ -107,9 +106,7 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
 
   function switchSymmetryGroup(groupId, options = {}) {
     const {
-      discardUnusedShaders = discardInactiveShaders,
-      autoPopulate = false,
-      populateCount = randomInstanceCount
+      discardUnusedShaders = discardInactiveShaders
     } = options;
     const nextGroup = getSymmetryGroup(groupId);
 
@@ -135,10 +132,6 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
           disposeGroupGpu(group);
         }
       }
-    }
-
-    if (autoPopulate) {
-      populateRandomInstances(populateCount);
     }
 
     refreshHudSelectors();
@@ -242,25 +235,6 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
     const group = getActiveGroup();
     clearGroupInstances(group);
     setGroupMeshesCount(group, 0);
-  }
-
-  function populateRandomInstances(count) {
-    const group = getActiveGroup();
-    ensureGroupHasActiveStyle(group);
-    if (!group.activeStyleId) {
-      return;
-    }
-    const keys = listShapeKeys(group, group.activeStyleId);
-    if (keys.length === 0) {
-      return;
-    }
-
-    for (let i = 0; i < count; i += 1) {
-      const selection = keys[Math.floor(Math.random() * keys.length)];
-      addInstance(selection.styleId, selection.shapeId, {
-        position: randomPosition()
-      });
-    }
   }
 
   function rebuildGpuForColorPaletteChange() {
@@ -651,14 +625,6 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
     }
   }
 
-  function randomPosition() {
-    return new THREE.Vector3(
-      THREE.MathUtils.randFloatSpread(36),
-      THREE.MathUtils.randFloatSpread(10),
-      THREE.MathUtils.randFloatSpread(36)
-    );
-  }
-
   function listShapeKeys(group, styleId) {
     const keys = [];
     for (const slotId of group.slots) {
@@ -679,7 +645,11 @@ export function createSymmetryRuntime({ scene, hudDesc, groupSelectEl, styleSele
     removeInstance,
     removeAllInstances,
     clearActiveInstances,
-    populateRandomInstances,
-    refreshHudSelectors
+    refreshHudSelectors,
+
+    // These are only needed for the demo's random population function; they are
+    //   not generally useful and may be removed in the future
+    getActiveGroup,
+    listShapeKeys,
   };
 }

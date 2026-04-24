@@ -1,5 +1,7 @@
 import { THREE, initScene } from "./scene.js";
-import { createSymmetryRuntime, RANDOM_INSTANCE_COUNT } from "./symmetry-runtime.js";
+import { createSymmetryRuntime } from "./symmetry-runtime.js";
+
+export const RANDOM_INSTANCE_COUNT = 10000;
 
 const app = document.getElementById("app");
 const messageEl = document.getElementById("message");
@@ -24,8 +26,7 @@ const runtime = createSymmetryRuntime({
   scene,
   hudDesc,
   groupSelectEl,
-  styleSelectEl,
-  randomInstanceCount: RANDOM_INSTANCE_COUNT
+  styleSelectEl
 });
 
 runtime.registerSymmetryGroup("tilted-bars", [
@@ -53,14 +54,15 @@ runtime.registerShape("axis-aligned", "planks", "column", new THREE.CylinderGeom
 runtime.registerShape("axis-aligned", "planks", "slab", new THREE.BoxGeometry(2.5, 0.12, 1.0));
 
 runtime.switchSymmetryGroup("tilted-bars");
-runtime.populateRandomInstances(RANDOM_INSTANCE_COUNT);
+populateRandomInstances(RANDOM_INSTANCE_COUNT);
 runtime.refreshHudSelectors();
 
 if (groupSelectEl) {
   groupSelectEl.addEventListener("change", (event) => {
     const groupId = event.target.value;
     try {
-      runtime.switchSymmetryGroup(groupId, { autoPopulate: true });
+      runtime.switchSymmetryGroup(groupId);
+      populateRandomInstances(RANDOM_INSTANCE_COUNT);
     } catch (error) {
       showMessage(error.message);
     }
@@ -81,7 +83,7 @@ if (styleSelectEl) {
 if (regenerateButton) {
   regenerateButton.addEventListener("click", () => {
     runtime.clearActiveInstances();
-    runtime.populateRandomInstances(RANDOM_INSTANCE_COUNT);
+    populateRandomInstances(RANDOM_INSTANCE_COUNT);
   });
 }
 
@@ -109,4 +111,27 @@ function onResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+
+function populateRandomInstances(count)
+{
+  const keys = runtime.listShapeKeys(runtime.getActiveGroup(), runtime.getActiveGroup().activeStyleId);
+  if (keys.length === 0) {
+    return;
+  }
+
+  for (let i = 0; i < count; i += 1) {
+    const selection = keys[Math.floor(Math.random() * keys.length)];
+    runtime.addInstance(selection.styleId, selection.shapeId, {
+      position: randomPosition()
+    });
+  }
+}
+function randomPosition() {
+  return new THREE.Vector3(
+    THREE.MathUtils.randFloatSpread(36),
+    THREE.MathUtils.randFloatSpread(10),
+    THREE.MathUtils.randFloatSpread(36)
+  );
 }
