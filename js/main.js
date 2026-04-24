@@ -167,7 +167,8 @@ function populateRandomInstances(count)
   for (let i = 0; i < count; i += 1) {
     const selection = keys[Math.floor(Math.random() * keys.length)];
     runtime.addInstance(selection.styleId, selection.shapeId, {
-      position: randomPosition()
+      position: randomPosition(),
+      highlight: Math.random() < 0.05 ? 1.2 : 0
     });
   }
 }

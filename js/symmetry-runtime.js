@@ -165,7 +165,7 @@ export function createSymmetryRuntime( scene )
     const oldGeom = entry.mesh.geometry;
     if (oldGeom === newGeom) return;
 
-    for (const name of ["orientationIndex", "instanceTranslation", "colorIndex"]) {
+    for (const name of ["orientationIndex", "instanceTranslation", "colorIndex", "highlightIntensity"]) {
       const attr = oldGeom.getAttribute(name);
       if (attr) {
         oldGeom.deleteAttribute(name);
@@ -192,13 +192,15 @@ export function createSymmetryRuntime( scene )
     const position = instanceOptions.position ?? new THREE.Vector3();
     const orientationIndex = normalizeOrientationIndex(group, instanceOptions.orientationIndex);
     const colorIndex = normalizeColorIndex(instanceOptions.colorIndex);
+    const highlight = instanceOptions.highlight ?? 0;
 
     const id = group.nextInstanceId;
     group.nextInstanceId += 1;
     shapeMap.set(id, {
       position,
       orientationIndex,
-      colorIndex
+      colorIndex,
+      highlight
     });
 
     syncShapeInstances(group, shapeId);
@@ -253,6 +255,8 @@ export function createSymmetryRuntime( scene )
     const instanceTranslationNode = attribute("instanceTranslation", "vec3");
     const colorIndexNode = attribute("colorIndex", "float");
 
+    const highlightIntensityNode = attribute("highlightIntensity", "float");
+
     const rotatedPositionNode = Fn(() => {
       const orientationMat = orientationUniform.element(orientationIndexNode.toInt());
       return orientationMat.mul(vec4(positionLocal, 1.0)).xyz.add(instanceTranslationNode);
@@ -265,6 +269,7 @@ export function createSymmetryRuntime( scene )
     });
     material.positionNode = rotatedPositionNode;
     material.colorNode = indexedColorNode;
+    material.emissiveNode = indexedColorNode.mul(highlightIntensityNode);
     return material;
   }
 
@@ -274,7 +279,8 @@ export function createSymmetryRuntime( scene )
     const orientBuffer = new Float32Array(INITIAL_SHAPE_CAPACITY);
     const translationBuffer = new Float32Array(INITIAL_SHAPE_CAPACITY * 3);
     const colorIndexBuffer = new Float32Array(INITIAL_SHAPE_CAPACITY);
-    attachAttributes(mesh.geometry, orientBuffer, translationBuffer, colorIndexBuffer);
+    const highlightBuffer = new Float32Array(INITIAL_SHAPE_CAPACITY);
+    attachAttributes(mesh.geometry, orientBuffer, translationBuffer, colorIndexBuffer, highlightBuffer);
     initializeIdentityMatrices(mesh, INITIAL_SHAPE_CAPACITY);
     mesh.count = 0;
 
@@ -284,7 +290,8 @@ export function createSymmetryRuntime( scene )
       mesh,
       orientBuffer,
       translationBuffer,
-      colorIndexBuffer
+      colorIndexBuffer,
+      highlightBuffer
     };
   }
 
@@ -365,18 +372,20 @@ export function createSymmetryRuntime( scene )
     const currentEntry = group.gpu.shapeEntries.get(slotId);
     currentEntry.mesh.count = instances.length;
     for (let i = 0; i < instances.length; i += 1) {
-      const { position, orientationIndex, colorIndex } = instances[i];
+      const { position, orientationIndex, colorIndex, highlight = 0 } = instances[i];
       currentEntry.orientBuffer[i] = orientationIndex;
       const base = i * 3;
       currentEntry.translationBuffer[base] = position.x;
       currentEntry.translationBuffer[base + 1] = position.y;
       currentEntry.translationBuffer[base + 2] = position.z;
       currentEntry.colorIndexBuffer[i] = colorIndex;
+      currentEntry.highlightBuffer[i] = highlight;
     }
 
     currentEntry.mesh.geometry.getAttribute("orientationIndex").needsUpdate = true;
     currentEntry.mesh.geometry.getAttribute("instanceTranslation").needsUpdate = true;
     currentEntry.mesh.geometry.getAttribute("colorIndex").needsUpdate = true;
+    currentEntry.mesh.geometry.getAttribute("highlightIntensity").needsUpdate = true;
   }
 
   function ensureShapeCapacity(group, key, needed) {
@@ -389,9 +398,11 @@ export function createSymmetryRuntime( scene )
     const nextOrient = new Float32Array(expandedCapacity);
     const nextTranslation = new Float32Array(expandedCapacity * 3);
     const nextColor = new Float32Array(expandedCapacity);
+    const nextHighlight = new Float32Array(expandedCapacity);
     nextOrient.set(entry.orientBuffer);
     nextTranslation.set(entry.translationBuffer);
     nextColor.set(entry.colorIndexBuffer);
+    nextHighlight.set(entry.highlightBuffer);
 
     const previousMesh = entry.mesh;
     const previousGeometry = previousMesh.geometry;
@@ -400,7 +411,7 @@ export function createSymmetryRuntime( scene )
     const activeStyle = group.styles.get(group.activeStyleId);
     const sourceGeom = activeStyle ? activeStyle.geometries.get(entry.slotId) : null;
     const nextGeometry = sourceGeom ? sourceGeom.clone() : previousGeometry.clone();
-    attachAttributes(nextGeometry, nextOrient, nextTranslation, nextColor);
+    attachAttributes(nextGeometry, nextOrient, nextTranslation, nextColor, nextHighlight);
 
     // Update the geometry cache: replace the active style's entry with the new geometry
     const slotCache = group.gpu.cachedGeometries.get(entry.slotId);
@@ -426,14 +437,16 @@ export function createSymmetryRuntime( scene )
       mesh: nextMesh,
       orientBuffer: nextOrient,
       translationBuffer: nextTranslation,
-      colorIndexBuffer: nextColor
+      colorIndexBuffer: nextColor,
+      highlightBuffer: nextHighlight
     });
   }
 
-  function attachAttributes(geometry, orientBuffer, translationBuffer, colorIndexBuffer) {
+  function attachAttributes(geometry, orientBuffer, translationBuffer, colorIndexBuffer, highlightBuffer) {
     geometry.setAttribute("orientationIndex", new THREE.InstancedBufferAttribute(orientBuffer, 1));
     geometry.setAttribute("instanceTranslation", new THREE.InstancedBufferAttribute(translationBuffer, 3));
     geometry.setAttribute("colorIndex", new THREE.InstancedBufferAttribute(colorIndexBuffer, 1));
+    geometry.setAttribute("highlightIntensity", new THREE.InstancedBufferAttribute(highlightBuffer, 1));
   }
 
   function initializeIdentityMatrices(mesh, capacity) {
@@ -578,6 +591,37 @@ export function createSymmetryRuntime( scene )
     }
   }
 
+  function setInstanceHighlight(shapeId, instanceId, intensity = 1) {
+    const group = getActiveGroup();
+    const shapeMap = group.instancesByShape.get(shapeId);
+    if (!shapeMap || !shapeMap.has(instanceId)) {
+      return false;
+    }
+    shapeMap.get(instanceId).highlight = intensity;
+    syncShapeInstances(group, shapeId);
+    return true;
+  }
+
+  function clearHighlights(shapeId) {
+    const group = getActiveGroup();
+    if (shapeId !== undefined) {
+      const shapeMap = group.instancesByShape.get(shapeId);
+      if (shapeMap) {
+        for (const inst of shapeMap.values()) {
+          inst.highlight = 0;
+        }
+        syncShapeInstances(group, shapeId);
+      }
+    } else {
+      for (const [sid, shapeMap] of group.instancesByShape) {
+        for (const inst of shapeMap.values()) {
+          inst.highlight = 0;
+        }
+        syncShapeInstances(group, sid);
+      }
+    }
+  }
+
   function listShapeKeys(group, styleId) {
     const keys = [];
     for (const slotId of group.slots) {
@@ -598,6 +642,8 @@ export function createSymmetryRuntime( scene )
     removeInstance,
     removeAllInstances,
     clearActiveInstances,
+    setInstanceHighlight,
+    clearHighlights,
     getGroupIds,
     getActiveGroupId,
     getActiveGroup,
