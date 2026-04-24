@@ -1,0 +1,116 @@
+:root {
+  color-scheme: dark;
+  --bg-1: #0e1624;
+  --bg-2: #1b2636;
+  --text: #e7eef8;
+  --muted: #98a9c1;
+  --panel: rgba(12, 19, 30, 0.82);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(1200px 600px at 20% -10%, #294363 0%, transparent 60%),
+    radial-gradient(800px 500px at 90% 10%, #1f324f 0%, transparent 55%),
+    linear-gradient(160deg, var(--bg-1), var(--bg-2));
+  overflow: hidden;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+}
+
+#hud {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 2;
+  padding: 12px 14px;
+  border: 1px solid rgba(150, 180, 220, 0.28);
+  border-radius: 10px;
+  background: var(--panel);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.34);
+}
+
+#hud h1 {
+  margin: 0 0 4px;
+  font-size: 14px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+#hud p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+#regenerate {
+  margin-top: 10px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid rgba(150, 180, 220, 0.4);
+  border-radius: 6px;
+  background: rgba(40, 70, 110, 0.6);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+#regenerate:hover {
+  background: rgba(60, 100, 160, 0.8);
+}
+
+#controls {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.control-row {
+  display: grid;
+  gap: 4px;
+}
+
+.control-row label {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.control-row select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid rgba(150, 180, 220, 0.4);
+  border-radius: 6px;
+  background: rgba(25, 45, 72, 0.8);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+}
+
+#message {
+  position: fixed;
+  inset: auto 16px 16px;
+  z-index: 2;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 180, 180, 0.4);
+  background: rgba(55, 20, 20, 0.8);
+  color: #ffd6d6;
+  font-size: 12px;
+  display: none;
+}
