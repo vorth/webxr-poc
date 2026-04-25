@@ -15,6 +15,7 @@ export async function initScene(appEl)
 
   const renderer = new THREE.WebGPURenderer({ antialias: true });
   await renderer.init();
+  renderer.xr.enabled = true;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   appEl.appendChild(renderer.domElement);

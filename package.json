@@ -1,0 +1,7 @@
+{
+  "name": "webgpu-poc",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

@@ -1,5 +1,6 @@
 import { THREE, initScene } from "./scene.js";
 import { createSymmetryRuntime } from "./symmetry-runtime.js";
+import { ARButton } from "three/addons/webxr/ARButton.js";
 
 export const RANDOM_INSTANCE_COUNT = 10000;
 
@@ -21,6 +22,30 @@ if (!navigator.gpu) {
 }
 
 const { scene, camera, renderer, controls } = await initScene(app);
+
+
+// Only enable AR if supported
+async function setupAR() {
+  if (navigator.xr && await navigator.xr.isSessionSupported?.('immersive-ar')) {
+    document.body.appendChild(ARButton.createButton(renderer, {
+      optionalFeatures: ['local-floor']
+    }));
+    // Toggle scene background/fog and orbit controls for AR passthrough
+    const _origBackground = scene.background;
+    const _origFog = scene.fog;
+    renderer.xr.addEventListener('sessionstart', () => {
+      scene.background = null;
+      scene.fog = null;
+      controls.enabled = false;
+    });
+    renderer.xr.addEventListener('sessionend', () => {
+      scene.background = _origBackground;
+      scene.fog = _origFog;
+      controls.enabled = true;
+    });
+  }
+}
+setupAR();
 
 const runtime = createSymmetryRuntime( scene );
 
@@ -105,6 +130,7 @@ renderer.setAnimationLoop(() => {
 });
 
 function onResize() {
+  if (renderer.xr.isPresenting) return;
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
