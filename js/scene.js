@@ -1,10 +1,17 @@
 import * as THREE from "three/webgpu";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { ARButton } from "three/addons/webxr/ARButton.js";
+import { createSymmetryRenderer } from "./symmetry-renderer.js";
 
 export { THREE };
 
-export async function initScene(appEl)
+export async function setupRendering(appEl)
 {
+  if (!navigator.gpu) {
+    showMessage("WebGPU is not available in this browser. Use a recent Chromium-based browser with WebGPU enabled.");
+    throw new Error("WebGPU not supported");
+  }
+
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0f1929);
   scene.fog = new THREE.Fog(0x0f1929, 22, 85);
@@ -32,10 +39,51 @@ export async function initScene(appEl)
   const grid = new THREE.GridHelper(50, 50, 0xffffff, 0xffffff);
   scene.add(grid);
 
+
+  // Only enable AR if supported
+  async function setupAR() {
+    if (navigator.xr && await navigator.xr.isSessionSupported?.('immersive-ar')) {
+      document.body.appendChild(ARButton.createButton(renderer, {
+        optionalFeatures: ['local-floor']
+      }));
+      // Toggle scene background/fog and orbit controls for AR passthrough
+      const _origBackground = scene.background;
+      const _origFog = scene.fog;
+      renderer.xr.addEventListener('sessionstart', () => {
+        scene.background = null;
+        scene.fog = null;
+        controls.enabled = false;
+      });
+      renderer.xr.addEventListener('sessionend', () => {
+        scene.background = _origBackground;
+        scene.fog = _origFog;
+        controls.enabled = true;
+      });
+    }
+  }
+  setupAR();
+  
+  const symmetryRenderer = createSymmetryRenderer( scene );
+  
+  window.addEventListener("resize", onResize);
+  
+  renderer.setAnimationLoop(() => {
+    controls.update();
+    renderer.render(scene, camera);
+  });
+  
+  function onResize() {
+    if (renderer.xr.isPresenting) return;
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+
   return {
     scene,
     camera,
     renderer,
-    controls
+    controls,
+    symmetryRenderer,
   };
 }

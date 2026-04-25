@@ -10,7 +10,7 @@ import { THREE } from "./scene.js";
 export const INITIAL_SHAPE_CAPACITY = 64;
 
 
-export function createSymmetryRuntime( scene )
+export function createSymmetryRenderer( scene )
 {
   const colorMatrices = [];
   let colorPalette = null;
