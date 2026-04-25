@@ -24,8 +24,8 @@ export async function initScene(appEl)
   controls.target.set(0, 0, 0);
   controls.enableDamping = true;
 
-  const ambient = new THREE.AmbientLight(0x8aa9d6, 0.45);
-  const key = new THREE.DirectionalLight(0xf7f2e7, 1.2);
+  const ambient = new THREE.AmbientLight(0xffffff, 0.45);
+  const key = new THREE.DirectionalLight(0xffffff, 1.2);
   key.position.set(12, 18, 10);
   scene.add(ambient, key);
 

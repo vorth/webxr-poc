@@ -47,8 +47,16 @@ async function setupAR() {
 }
 setupAR();
 
+
 const runtime = createSymmetryRuntime( scene );
 
+// Register default color palette
+runtime.registerColor(new THREE.Vector3(0,0,1)); // blue
+runtime.registerColor(new THREE.Vector3(1,0,0)); // red
+runtime.registerColor(new THREE.Vector3(0.4,0,1));   // purple
+runtime.registerColor(new THREE.Vector3(1,1,0));   // yellow
+runtime.registerColor(new THREE.Vector3(0,1,0));   // green
+  
 runtime.registerSymmetryGroup("tilted-bars", [
   new THREE.Euler(1.0, 1.0, 0),
   new THREE.Euler(1.0, 2.0, 1.0),

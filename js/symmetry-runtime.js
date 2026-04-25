@@ -9,15 +9,11 @@ import { THREE } from "./scene.js";
 
 export const INITIAL_SHAPE_CAPACITY = 64;
 
+
 export function createSymmetryRuntime( scene )
 {
-  const colorMatrices = [
-    new THREE.Vector3(0.2, 0.72, 0.98),
-    new THREE.Vector3(0.96, 0.2, 0.16),
-    new THREE.Vector3(0.88, 0.96, 0.32),
-    new THREE.Vector3(0.7, 0.3, 1.0)
-  ];
-  const colorPalette = uniformArray(colorMatrices);
+  const colorMatrices = [];
+  let colorPalette = null;
 
   const symmetryGroups = new Map();
   let activeGroupId = null;
@@ -179,6 +175,7 @@ export function createSymmetryRuntime( scene )
   function registerColor(colorInput) {
     const color = normalizeColorInput(colorInput);
     colorMatrices.push(color);
+    colorPalette = uniformArray(colorMatrices);
     rebuildGpuForColorPaletteChange();
     return colorMatrices.length - 1;
   }
