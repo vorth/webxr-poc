@@ -266,7 +266,8 @@ export function createSymmetryRenderer( scene )
     });
     material.positionNode = rotatedPositionNode;
     material.colorNode = indexedColorNode;
-    material.emissiveNode = indexedColorNode.mul(highlightIntensityNode);
+    // Use white for emissive light, modulated by highlight intensity
+    material.emissiveNode = vec4(1.0, 1.0, 1.0, 1.0).xyz.mul(highlightIntensityNode);
     return material;
   }
 

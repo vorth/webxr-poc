@@ -32,8 +32,8 @@ symmetryRenderer.registerSymmetryGroup("tilted-bars", [
   new THREE.Euler(0, 1.0, 3.0)
 ]);
 symmetryRenderer.registerStyle("tilted-bars", "rounded");
-symmetryRenderer.registerShape("tilted-bars", "rounded", "thin", new THREE.CylinderGeometry(0.12, 0.12, 2.0, 8));
-symmetryRenderer.registerShape("tilted-bars", "rounded", "wide", new THREE.CylinderGeometry(0.85, 0.85, 0.22, 10));
+symmetryRenderer.registerShape("tilted-bars", "rounded", "thin", new THREE.CylinderGeometry(0.12, 0.12, 2.0, 28));
+symmetryRenderer.registerShape("tilted-bars", "rounded", "wide", new THREE.CylinderGeometry(0.85, 0.85, 0.22, 28));
 symmetryRenderer.registerStyle("tilted-bars", "default");
 symmetryRenderer.registerShape("tilted-bars", "default", "thin", new THREE.BoxGeometry(0.22, 2.0, 0.22));
 symmetryRenderer.registerShape("tilted-bars", "default", "wide", new THREE.BoxGeometry(1.9, 0.24, 0.85));
@@ -47,7 +47,7 @@ symmetryRenderer.registerStyle("axis-aligned", "beams");
 symmetryRenderer.registerShape("axis-aligned", "beams", "column", new THREE.BoxGeometry(0.3, 2.2, 0.3));
 symmetryRenderer.registerShape("axis-aligned", "beams", "slab", new THREE.BoxGeometry(2.1, 0.2, 0.75));
 symmetryRenderer.registerStyle("axis-aligned", "planks");
-symmetryRenderer.registerShape("axis-aligned", "planks", "column", new THREE.CylinderGeometry(0.15, 0.15, 2.2, 8));
+symmetryRenderer.registerShape("axis-aligned", "planks", "column", new THREE.CylinderGeometry(0.15, 0.15, 2.2, 28));
 symmetryRenderer.registerShape("axis-aligned", "planks", "slab", new THREE.BoxGeometry(2.5, 0.12, 1.0));
 
 symmetryRenderer.switchSymmetryGroup("tilted-bars");
@@ -143,7 +143,7 @@ function populateRandomInstances(count)
     const selection = keys[Math.floor(Math.random() * keys.length)];
     symmetryRenderer.addInstance(selection.styleId, selection.shapeId, {
       position: randomPosition(),
-      highlight: Math.random() < 0.05 ? 1 : 0
+      highlight: Math.random() < 0.05 ? 0.35 : 0
     });
   }
 }
