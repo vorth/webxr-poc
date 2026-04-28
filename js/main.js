@@ -19,6 +19,12 @@ const showMessage = (text) => {
   messageEl.style.display = "block";
 };
 
+// if (!navigator.gpu) {
+//   showMessage("WebGPU is not available in this browser. Use a recent Chromium-based browser with WebGPU enabled.");
+//   throw new Error("WebGPU not supported");
+// }
+
+
 // Register default color palette
 symmetryRenderer.registerColor(new THREE.Vector3(0,0,1)); // blue
 symmetryRenderer.registerColor(new THREE.Vector3(1,0,0)); // red

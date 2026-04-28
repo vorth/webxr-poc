@@ -7,11 +7,6 @@ export { THREE };
 
 export async function setupRendering(appEl)
 {
-  if (!navigator.gpu) {
-    showMessage("WebGPU is not available in this browser. Use a recent Chromium-based browser with WebGPU enabled.");
-    throw new Error("WebGPU not supported");
-  }
-
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0f1929);
   scene.fog = new THREE.Fog(0x0f1929, 22, 85);
