@@ -8,11 +8,11 @@ export { THREE };
 export async function setupRendering(appEl)
 {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0f1929);
+  scene.background = new THREE.Color(0x8090a0);
   scene.fog = new THREE.Fog(0x0f1929, 22, 85);
 
-  const camera = new THREE.PerspectiveCamera(56, window.innerWidth / window.innerHeight, 0.1, 250);
-  camera.position.set(16, 14, 16);
+  const camera = new THREE.PerspectiveCamera(56, window.innerWidth / window.innerHeight, 0.001, 7);
+  camera.position.set( 0.4, 0.3, 0.4 );
   camera.lookAt(0, 0, 0);
 
   const renderer = new THREE.WebGPURenderer({ antialias: true });
@@ -28,11 +28,11 @@ export async function setupRendering(appEl)
 
   const ambient = new THREE.AmbientLight(0xffffff, 0.45);
   const key = new THREE.DirectionalLight(0xffffff, 1.2);
-  key.position.set(12, 18, 10);
+  key.position.set( 0.3, 0.6, 0.5 ).normalize();
   scene.add(ambient, key);
 
-  const grid = new THREE.GridHelper(50, 50, 0xffffff, 0xffffff);
-  scene.add(grid);
+  // const grid = new THREE.GridHelper(50, 50, 0xffffff, 0xffffff);
+  // scene.add(grid);
 
 
   // Only enable AR if supported

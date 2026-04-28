@@ -6,7 +6,7 @@ const app = document.getElementById("app");
 const { symmetryRenderer } = await setupRendering(app);
 
 
-export const RANDOM_INSTANCE_COUNT = 10000;
+export const RANDOM_INSTANCE_COUNT = 1000;
 
 const messageEl = document.getElementById("message");
 const hudDesc = document.querySelector("#hud p");
@@ -24,6 +24,7 @@ const showMessage = (text) => {
 //   throw new Error("WebGPU not supported");
 // }
 
+const scale = 0.03; // geometries here were not designed for AR scale, so we apply a global scale factor to make them fit better in AR viewing. This is optional and can be adjusted as needed.
 
 // Register default color palette
 symmetryRenderer.registerColor(new THREE.Vector3(0,0,1)); // blue
@@ -38,11 +39,11 @@ symmetryRenderer.registerSymmetryGroup("tilted-bars", [
   new THREE.Euler(0, 1.0, 3.0)
 ]);
 symmetryRenderer.registerStyle("tilted-bars", "rounded");
-symmetryRenderer.registerShape("tilted-bars", "rounded", "thin", new THREE.CylinderGeometry(0.12, 0.12, 2.0, 28));
-symmetryRenderer.registerShape("tilted-bars", "rounded", "wide", new THREE.CylinderGeometry(0.85, 0.85, 0.22, 28));
+symmetryRenderer.registerShape("tilted-bars", "rounded", "thin", new THREE.CylinderGeometry(0.12 * scale, 0.12 * scale, 2.0 * scale, 28));
+symmetryRenderer.registerShape("tilted-bars", "rounded", "wide", new THREE.CylinderGeometry(0.85 * scale, 0.85 * scale, 0.22 * scale, 28));
 symmetryRenderer.registerStyle("tilted-bars", "default");
-symmetryRenderer.registerShape("tilted-bars", "default", "thin", new THREE.BoxGeometry(0.22, 2.0, 0.22));
-symmetryRenderer.registerShape("tilted-bars", "default", "wide", new THREE.BoxGeometry(1.9, 0.24, 0.85));
+symmetryRenderer.registerShape("tilted-bars", "default", "thin", new THREE.BoxGeometry(0.22 * scale, 2.0 * scale, 0.22 * scale));
+symmetryRenderer.registerShape("tilted-bars", "default", "wide", new THREE.BoxGeometry(1.9 * scale, 0.24 * scale, 0.85 * scale));
 
 symmetryRenderer.registerSymmetryGroup("axis-aligned", [
   new THREE.Euler(0, 0, 0),
@@ -50,13 +51,13 @@ symmetryRenderer.registerSymmetryGroup("axis-aligned", [
   new THREE.Euler(0, Math.PI * 0.5, 0)
 ]);
 symmetryRenderer.registerStyle("axis-aligned", "beams");
-symmetryRenderer.registerShape("axis-aligned", "beams", "column", new THREE.BoxGeometry(0.3, 2.2, 0.3));
-symmetryRenderer.registerShape("axis-aligned", "beams", "slab", new THREE.BoxGeometry(2.1, 0.2, 0.75));
+symmetryRenderer.registerShape("axis-aligned", "beams", "column", new THREE.BoxGeometry(0.3 * scale, 2.2 * scale, 0.3 * scale));
+symmetryRenderer.registerShape("axis-aligned", "beams", "slab", new THREE.BoxGeometry(2.1 * scale, 0.2 * scale, 0.75 * scale));
 symmetryRenderer.registerStyle("axis-aligned", "planks");
-symmetryRenderer.registerShape("axis-aligned", "planks", "column", new THREE.CylinderGeometry(0.15, 0.15, 2.2, 28));
-symmetryRenderer.registerShape("axis-aligned", "planks", "slab", new THREE.BoxGeometry(2.5, 0.12, 1.0));
+symmetryRenderer.registerShape("axis-aligned", "planks", "column", new THREE.CylinderGeometry(0.15 * scale, 0.15 * scale, 2.2 * scale, 28));
+symmetryRenderer.registerShape("axis-aligned", "planks", "slab", new THREE.BoxGeometry(2.5 * scale, 0.12 * scale, 1.0 * scale));
 
-symmetryRenderer.switchSymmetryGroup("tilted-bars");
+symmetryRenderer.switchSymmetryGroup("axis-aligned");
 populateRandomInstances(RANDOM_INSTANCE_COUNT);
 refreshUI();
 
@@ -155,8 +156,8 @@ function populateRandomInstances(count)
 }
 function randomPosition() {
   return new THREE.Vector3(
-    THREE.MathUtils.randFloatSpread(36),
-    THREE.MathUtils.randFloatSpread(10),
-    THREE.MathUtils.randFloatSpread(36)
+    THREE.MathUtils.randFloatSpread(1),
+    THREE.MathUtils.randFloatSpread(0.3),
+    THREE.MathUtils.randFloatSpread(1)
   );
 }
