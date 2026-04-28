@@ -10,8 +10,12 @@ import { THREE } from "./scene.js";
 export const INITIAL_SHAPE_CAPACITY = 64;
 
 
-export function createSymmetryRenderer( scene )
+export function createSymmetryRenderer(scene)
 {
+  // Create a group to hold all managed meshes
+  const originGroup = new THREE.Group();
+  scene.add(originGroup);
+
   const colorMatrices = [];
   let colorPalette = null;
 
@@ -332,8 +336,8 @@ export function createSymmetryRenderer( scene )
       return;
     }
     for (const entry of group.gpu.shapeEntries.values()) {
-      if (entry.mesh.parent !== scene) {
-        scene.add(entry.mesh);
+      if (entry.mesh.parent !== originGroup) {
+        originGroup.add(entry.mesh);
       }
     }
   }
@@ -461,8 +465,8 @@ export function createSymmetryRenderer( scene )
     }
 
     for (const entry of group.gpu.shapeEntries.values()) {
-      if (entry.mesh.parent === scene) {
-        scene.remove(entry.mesh);
+      if (entry.mesh.parent === originGroup) {
+        originGroup.remove(entry.mesh);
       }
       // Geometry is owned by cachedGeometries; disposed below
     }
@@ -628,6 +632,11 @@ export function createSymmetryRenderer( scene )
     return keys;
   }
 
+  // Expose a setOrigin method to set the group's position
+  function setOrigin(vec3) {
+    originGroup.position.copy(vec3);
+  }
+
   return {
     registerSymmetryGroup,
     registerStyle,
@@ -646,5 +655,6 @@ export function createSymmetryRenderer( scene )
     getActiveGroupId,
     getActiveGroup,
     listShapeKeys,
+    setOrigin,
   };
 }

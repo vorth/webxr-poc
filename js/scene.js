@@ -2,10 +2,11 @@ import * as THREE from "three/webgpu";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { ARButton } from "three/addons/webxr/ARButton.js";
 import { createSymmetryRenderer } from "./symmetry-renderer.js";
+import { createText } from 'three/addons/webxr/Text2D.js';
 
 export { THREE };
 
-export async function setupRendering(appEl)
+export async function setupRendering( appEl, onControllerTriggered )
 {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x8090a0);
@@ -34,13 +35,19 @@ export async function setupRendering(appEl)
   // const grid = new THREE.GridHelper(50, 50, 0xffffff, 0xffffff);
   // scene.add(grid);
 
-
   // Only enable AR if supported
+  let symmetryRenderer;
   async function setupAR() {
     if (navigator.xr && await navigator.xr.isSessionSupported?.('immersive-ar')) {
       document.body.appendChild(ARButton.createButton(renderer, {
         optionalFeatures: ['local-floor']
       }));
+
+      const instructionText = createText( 'Pull the trigger\nto relocate the model\nto the controller position', 0.03 );
+      instructionText.position.set( 0, 0, - 0.6 );
+      scene.add( instructionText );
+      instructionText.visible = false;
+
       // Toggle scene background/fog and orbit controls for AR passthrough
       const _origBackground = scene.background;
       const _origFog = scene.fog;
@@ -48,18 +55,26 @@ export async function setupRendering(appEl)
         scene.background = null;
         scene.fog = null;
         controls.enabled = false;
+        instructionText.visible = true;
+        symmetryRenderer.setOrigin( new THREE.Vector3(0, -0.2, -0.7) );
       });
       renderer.xr.addEventListener('sessionend', () => {
         scene.background = _origBackground;
         scene.fog = _origFog;
         controls.enabled = true;
+        instructionText.visible = false;
+        symmetryRenderer.setOrigin( new THREE.Vector3(0, 0, 0) );
       });
     }
   }
   setupAR();
   
-  const symmetryRenderer = createSymmetryRenderer( scene );
+  symmetryRenderer = createSymmetryRenderer( scene );
   
+  const controller = renderer.xr.getController( 0 );
+  controller.addEventListener( 'select', onControllerTriggered( controller, symmetryRenderer ) );
+  scene.add( controller );
+
   window.addEventListener("resize", onResize);
   
   renderer.setAnimationLoop(() => {

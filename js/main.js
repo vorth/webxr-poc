@@ -3,10 +3,12 @@ import { THREE, setupRendering } from "./scene.js";
 
 const app = document.getElementById("app");
 
-const { symmetryRenderer } = await setupRendering(app);
 
+const controllerTriggered = (controller, symmetryRenderer) => () => {
+  symmetryRenderer.setOrigin( controller.position.clone() );
+}
 
-export const RANDOM_INSTANCE_COUNT = 1000;
+const { symmetryRenderer, scene } = await setupRendering( app, controllerTriggered );
 
 const messageEl = document.getElementById("message");
 const hudDesc = document.querySelector("#hud p");
@@ -27,10 +29,10 @@ const showMessage = (text) => {
 const scale = 0.03; // geometries here were not designed for AR scale, so we apply a global scale factor to make them fit better in AR viewing. This is optional and can be adjusted as needed.
 
 // Register default color palette
-symmetryRenderer.registerColor(new THREE.Vector3(0,0,1)); // blue
+// symmetryRenderer.registerColor(new THREE.Vector3(0,0,1)); // blue
 symmetryRenderer.registerColor(new THREE.Vector3(1,0,0)); // red
 symmetryRenderer.registerColor(new THREE.Vector3(0.4,0,1));   // purple
-symmetryRenderer.registerColor(new THREE.Vector3(1,1,0));   // yellow
+// symmetryRenderer.registerColor(new THREE.Vector3(1,1,0));   // yellow
 symmetryRenderer.registerColor(new THREE.Vector3(0,1,0));   // green
   
 symmetryRenderer.registerSymmetryGroup("tilted-bars", [
@@ -58,13 +60,17 @@ symmetryRenderer.registerShape("axis-aligned", "planks", "column", new THREE.Cyl
 symmetryRenderer.registerShape("axis-aligned", "planks", "slab", new THREE.BoxGeometry(2.5 * scale, 0.12 * scale, 1.0 * scale));
 
 symmetryRenderer.switchSymmetryGroup("axis-aligned");
+
+const RANDOM_INSTANCE_COUNT = 1000;
 populateRandomInstances(RANDOM_INSTANCE_COUNT);
+
 refreshUI();
 
 if (groupSelectEl) {
   groupSelectEl.addEventListener("change", (event) => {
     const groupId = event.target.value;
     try {
+      symmetryRenderer.clearActiveInstances();
       symmetryRenderer.switchSymmetryGroup(groupId);
       populateRandomInstances(RANDOM_INSTANCE_COUNT);
       refreshUI();
@@ -156,8 +162,8 @@ function populateRandomInstances(count)
 }
 function randomPosition() {
   return new THREE.Vector3(
-    THREE.MathUtils.randFloatSpread(1),
+    THREE.MathUtils.randFloatSpread(0.5),
     THREE.MathUtils.randFloatSpread(0.3),
-    THREE.MathUtils.randFloatSpread(1)
+    THREE.MathUtils.randFloatSpread(0.5)
   );
 }
