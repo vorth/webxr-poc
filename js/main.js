@@ -61,7 +61,7 @@ symmetryRenderer.registerShape("axis-aligned", "planks", "slab", new THREE.BoxGe
 
 symmetryRenderer.switchSymmetryGroup("axis-aligned");
 
-const RANDOM_INSTANCE_COUNT = 1000;
+const RANDOM_INSTANCE_COUNT = 400;
 populateRandomInstances(RANDOM_INSTANCE_COUNT);
 
 refreshUI();

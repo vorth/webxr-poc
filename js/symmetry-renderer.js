@@ -96,7 +96,7 @@ export function createSymmetryRenderer(scene)
         const entry = createShapeEntry(slotId, activeGeom, group.gpu.material);
         group.gpu.shapeEntries.set(slotId, entry);
         if (group.id === activeGroupId) {
-          scene.add(entry.mesh);
+          originGroup.add(entry.mesh);
         }
       }
     }
@@ -425,9 +425,9 @@ export function createSymmetryRenderer(scene)
     initializeIdentityMatrices(nextMesh, expandedCapacity);
     nextMesh.count = previousMesh.count;
 
-    if (previousMesh.parent === scene) {
-      scene.remove(previousMesh);
-      scene.add(nextMesh);
+    if (previousMesh.parent === originGroup) {
+      originGroup.remove(previousMesh);
+      originGroup.add(nextMesh);
     }
     // The old geometry is no longer in the cache; defer disposal to avoid destroying
     // buffers that the current frame's command buffer may still reference
