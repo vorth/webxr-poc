@@ -16,7 +16,7 @@ export async function setupRendering( appEl, onControllerTriggered )
   camera.position.set( 0.4, 0.3, 0.4 );
   camera.lookAt(0, 0, 0);
 
-  const renderer = new THREE.WebGPURenderer({ antialias: true });
+  const renderer = new THREE.WebGPURenderer({ antialias: true, forceWebGL: true });
   await renderer.init();
   renderer.xr.enabled = true;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
