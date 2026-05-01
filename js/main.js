@@ -170,7 +170,7 @@ const { subscribeFor, postMessage } = createWorker();
 const message = {
   type: "URL_PROVIDED",
   payload: {
-    url: "https://raw.githubusercontent.com/vorth/vzome-sharing/main/2026/02/22/08-30-16-g4g16-new-talk/g4g16-new-talk.vZome",
+    url: "https://gist.githubusercontent.com/vorth/a144f828f0685bc0cfeed17f7f891bad/raw/c8bd06ba7e92e0c3814b4322ea07d5181d565f77/icosahedron-A5-edges.vZome",
     config: {
       preview: true,
       showScenes: "all",
@@ -181,7 +181,7 @@ const message = {
       showSettings: true,
       download: true,
       useSpinner: false,
-      url: "https://raw.githubusercontent.com/vorth/vzome-sharing/main/2026/02/22/08-30-16-g4g16-new-talk/g4g16-new-talk.vZome",
+      url: "https://gist.githubusercontent.com/vorth/a144f828f0685bc0cfeed17f7f891bad/raw/c8bd06ba7e92e0c3814b4322ea07d5181d565f77/icosahedron-A5-edges.vZome",
       load: {
         camera: true,
         lighting: true,
@@ -204,7 +204,10 @@ subscribeFor( 'SCENE_RENDERED', ( payload ) => {
   const colorIndexMap = new Map();        // hex string → colorIndex
   for ( const shape of Object.values( shapes ) ) {
     for ( const instance of shape.instances ) {
-      orientations[ instance.orientation ] = new THREE.Matrix4().fromArray( instance.rotation ) .transpose();
+      let orientation = instance.orientation;
+      if ( orientation < 0 )
+        orientation = 0; // vZome uses -1 for "no rotation", but our shader expects a valid index, so we treat it as the identity orientation at index 0
+      orientations[ orientation ] = new THREE.Matrix4().fromArray( instance.rotation ) .transpose();
       if ( !colorIndexMap.has( instance.color ) ) {
         const c = new THREE.Color( instance.color );
         const idx = symmetryRenderer.registerColor( new THREE.Vector3( c.r, c.g, c.b ) );
@@ -245,9 +248,12 @@ subscribeFor( 'SCENE_RENDERED', ( payload ) => {
   for ( const shape of Object.values( shapes ) ) {
     for ( const instance of shape.instances ) {
       const [ px, py, pz ] = instance.position;
+      let orientation = instance.orientation;
+      if ( orientation < 0 )
+        orientation = 0; // vZome uses -1 for "no rotation", but our shader expects a valid index, so we treat it as the identity orientation at index 0
       symmetryRenderer.addInstance( STYLE_ID, shape.id, {
         position: new THREE.Vector3( px * scale, py * scale, pz * scale ),
-        orientationIndex: instance.orientation,
+        orientationIndex: orientation,
         colorIndex: colorIndexMap.get( instance.color ),
       } );
     }
