@@ -656,5 +656,6 @@ export function createSymmetryRenderer(scene)
     getActiveGroup,
     listShapeKeys,
     setOrigin,
+    originGroup,
   };
 }

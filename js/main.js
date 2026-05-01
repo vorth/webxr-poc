@@ -4,11 +4,7 @@ import { THREE, setupRendering } from "./scene.js";
 const app = document.getElementById("app");
 
 
-const controllerTriggered = (controller, symmetryRenderer) => () => {
-  symmetryRenderer.setOrigin( controller.position.clone() );
-}
-
-const { symmetryRenderer, scene } = await setupRendering( app, controllerTriggered );
+const { symmetryRenderer, scene } = await setupRendering( app );
 
 const messageEl = document.getElementById("message");
 const hudDesc = document.querySelector("#hud p");

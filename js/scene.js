@@ -6,7 +6,7 @@ import { createText } from 'three/addons/webxr/Text2D.js';
 
 export { THREE };
 
-export async function setupRendering( appEl, onControllerTriggered )
+export async function setupRendering( appEl )
 {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x8090a0);
@@ -43,7 +43,7 @@ export async function setupRendering( appEl, onControllerTriggered )
         optionalFeatures: ['local-floor']
       }));
 
-      const instructionText = createText( 'Pull the trigger\nto relocate the model\nto the controller position', 0.03 );
+      const instructionText = createText( 'Grip to move the model', 0.03 );
       instructionText.position.set( 0, 0, - 0.6 );
       scene.add( instructionText );
       instructionText.visible = false;
@@ -71,9 +71,16 @@ export async function setupRendering( appEl, onControllerTriggered )
   
   symmetryRenderer = createSymmetryRenderer( scene );
   
-  const controller = renderer.xr.getController( 0 );
-  controller.addEventListener( 'select', onControllerTriggered( controller, symmetryRenderer ) );
-  scene.add( controller );
+  for (let i = 0; i < 2; i++) {
+    const controller = renderer.xr.getController( i );
+    controller.addEventListener( 'squeezestart', () => {
+      controller.attach( symmetryRenderer.originGroup );
+    });
+    controller.addEventListener( 'squeezeend', () => {
+      scene.attach( symmetryRenderer.originGroup );
+    });
+    scene.add( controller );
+  }
 
   window.addEventListener("resize", onResize);
   
