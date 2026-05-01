@@ -266,7 +266,8 @@ export function createSymmetryRenderer(scene)
 
     const material = new THREE.MeshPhongNodeMaterial({
       shininess: 55,
-      specular: new THREE.Color(0x7288a5)
+      specular: new THREE.Color(0x7288a5),
+      flatShading: true,
     });
     material.positionNode = rotatedPositionNode;
     material.colorNode = indexedColorNode;

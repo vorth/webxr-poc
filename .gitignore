@@ -3,3 +3,5 @@ cert.pem
 node_modules/
 
 three-examples/
+
+test-scene.json

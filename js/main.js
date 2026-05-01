@@ -1,4 +1,5 @@
 import { THREE, setupRendering } from "./scene.js";
+import { createWorker } from "./worker.js";
 
 
 const app = document.getElementById("app");
@@ -163,3 +164,101 @@ function randomPosition() {
     THREE.MathUtils.randFloatSpread(0.5)
   );
 }
+
+const { subscribeFor, postMessage } = createWorker();
+
+const message = {
+  type: "URL_PROVIDED",
+  payload: {
+    url: "https://raw.githubusercontent.com/vorth/vzome-sharing/main/2026/02/22/08-30-16-g4g16-new-talk/g4g16-new-talk.vZome",
+    config: {
+      preview: true,
+      showScenes: "all",
+      camera: true,
+      lighting: true,
+      design: true,
+      labels: false,
+      showSettings: true,
+      download: true,
+      useSpinner: false,
+      url: "https://raw.githubusercontent.com/vorth/vzome-sharing/main/2026/02/22/08-30-16-g4g16-new-talk/g4g16-new-talk.vZome",
+      load: {
+        camera: true,
+        lighting: true,
+        design: true,
+      },
+      snapshot: -1,
+    },
+  },
+};
+
+subscribeFor( 'SCENE_RENDERED', ( payload ) => {
+  console.log( 'SCENE_RENDERED payload:', payload );
+  const shapes = payload?.scene?.shapes;
+  if ( !shapes ) return;
+  const GROUP_ID = "vzome-icosahedral";
+  const STYLE_ID = "vzome-mesh";
+
+  // Collect all unique orientations and colors across every instance
+  const orientationMatrixMap = new Map(); // orientation int → THREE.Matrix4
+  const colorIndexMap = new Map();        // hex string → colorIndex
+  for ( const shape of Object.values( shapes ) ) {
+    for ( const instance of shape.instances ) {
+      if ( !orientationMatrixMap.has( instance.orientation ) ) {
+        orientationMatrixMap.set( instance.orientation, new THREE.Matrix4().fromArray( instance.rotation ) );
+      }
+      if ( !colorIndexMap.has( instance.color ) ) {
+        const c = new THREE.Color( instance.color );
+        const idx = symmetryRenderer.registerColor( new THREE.Vector3( c.r, c.g, c.b ) );
+        colorIndexMap.set( instance.color, idx );
+      }
+    }
+  }
+
+  const orientationEntries = [ ...orientationMatrixMap.entries() ];
+  const orientations = orientationEntries.map( ( [ , m ] ) => m );
+
+  // Register the new symmetry group and style
+  symmetryRenderer.registerSymmetryGroup( GROUP_ID, orientations );
+  symmetryRenderer.registerStyle( GROUP_ID, STYLE_ID );
+
+  // Build and register a THREE.BufferGeometry for each shape
+  for ( const shape of Object.values( shapes ) ) {
+    const positions = [];
+    for ( const v of shape.vertices ) {
+      positions.push( v.x * scale, v.y * scale, v.z * scale );
+    }
+    const indices = [];
+    for ( const face of shape.faces ) {
+      const verts = face.vertices;
+      // Fan-triangulate each polygon from its first vertex
+      for ( let i = 1; i < verts.length - 1; i++ ) {
+        indices.push( verts[0], verts[i], verts[i + 1] );
+      }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute( 'position', new THREE.BufferAttribute( new Float32Array( positions ), 3 ) );
+    geometry.setIndex( indices );
+    geometry.computeVertexNormals();
+    symmetryRenderer.registerShape( GROUP_ID, STYLE_ID, shape.id, geometry );
+  }
+
+  // Switch to the new group (builds GPU resources over the registered shapes)
+  symmetryRenderer.switchSymmetryGroup( GROUP_ID );
+
+  // Add each instance to its shape
+  for ( const shape of Object.values( shapes ) ) {
+    for ( const instance of shape.instances ) {
+      const orientationIndex = orientationEntries.findIndex( ( [ oi ] ) => oi === instance.orientation );
+      const [ px, py, pz ] = instance.position;
+      symmetryRenderer.addInstance( STYLE_ID, shape.id, {
+        position: new THREE.Vector3( px * scale, py * scale, pz * scale ),
+        orientationIndex,
+        colorIndex: colorIndexMap.get( instance.color ),
+      } );
+    }
+  }
+  refreshUI();
+} );
+
+postMessage( message );
