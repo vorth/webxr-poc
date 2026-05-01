@@ -37,14 +37,15 @@ export async function setupRendering( appEl )
 
   // Only enable AR if supported
   let symmetryRenderer;
+  let instructionText = null;
+  let needsInitialPlacement = false;
   async function setupAR() {
     if (navigator.xr && await navigator.xr.isSessionSupported?.('immersive-ar')) {
       document.body.appendChild(ARButton.createButton(renderer, {
         optionalFeatures: ['local-floor']
       }));
 
-      const instructionText = createText( 'Grip to move the model', 0.03 );
-      instructionText.position.set( 0, 0, - 0.6 );
+      instructionText = createText( 'Grip to move the model', 0.03 );
       scene.add( instructionText );
       instructionText.visible = false;
 
@@ -56,7 +57,7 @@ export async function setupRendering( appEl )
         scene.fog = null;
         controls.enabled = false;
         instructionText.visible = true;
-        symmetryRenderer.setOrigin( new THREE.Vector3(0, -0.2, -0.7) );
+        needsInitialPlacement = true;
       });
       renderer.xr.addEventListener('sessionend', () => {
         scene.background = _origBackground;
@@ -84,9 +85,28 @@ export async function setupRendering( appEl )
 
   window.addEventListener("resize", onResize);
   
+  const _forward = new THREE.Vector3();
+  const _viewerPos = new THREE.Vector3();
+  const _viewerQuat = new THREE.Quaternion();
   renderer.setAnimationLoop(() => {
     controls.update();
     renderer.render(scene, camera);
+    if (needsInitialPlacement && renderer.xr.isPresenting) {
+      const xrCamera = renderer.xr.getCamera();
+      xrCamera.getWorldPosition(_viewerPos);
+      xrCamera.getWorldQuaternion(_viewerQuat);
+      _forward.set(0, 0, -1).applyQuaternion(_viewerQuat);
+      symmetryRenderer.setOrigin(
+        _viewerPos.clone()
+          .addScaledVector(_forward, 0.7)
+          .add(new THREE.Vector3(0, -0.2, 0))
+      );
+      if (instructionText) {
+        instructionText.position.copy(_viewerPos).addScaledVector(_forward, 0.6);
+        instructionText.quaternion.copy(_viewerQuat);
+      }
+      needsInitialPlacement = false;
+    }
   });
   
   function onResize() {
