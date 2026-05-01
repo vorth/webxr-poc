@@ -170,7 +170,7 @@ const { subscribeFor, postMessage } = createWorker();
 const message = {
   type: "URL_PROVIDED",
   payload: {
-    url: "https://gist.githubusercontent.com/vorth/a144f828f0685bc0cfeed17f7f891bad/raw/c8bd06ba7e92e0c3814b4322ea07d5181d565f77/icosahedron-A5-edges.vZome",
+    url: "https://raw.githubusercontent.com/vorth/vzome-sharing/main/2026/01/20/04-44-10-077Z-JK-CRF-tet-first/JK-CRF-tet-first.vZome",
     config: {
       preview: true,
       showScenes: "all",
@@ -181,7 +181,7 @@ const message = {
       showSettings: true,
       download: true,
       useSpinner: false,
-      url: "https://gist.githubusercontent.com/vorth/a144f828f0685bc0cfeed17f7f891bad/raw/c8bd06ba7e92e0c3814b4322ea07d5181d565f77/icosahedron-A5-edges.vZome",
+      url: "https://raw.githubusercontent.com/vorth/vzome-sharing/main/2026/01/20/04-44-10-077Z-JK-CRF-tet-first/JK-CRF-tet-first.vZome",
       load: {
         camera: true,
         lighting: true,
@@ -198,6 +198,8 @@ subscribeFor( 'SCENE_RENDERED', ( payload ) => {
   if ( !shapes ) return;
   const GROUP_ID = "vzome-icosahedral";
   const STYLE_ID = "vzome-mesh";
+
+  const scale = 0.008; // geometries here were not designed for AR scale, so we apply a global scale factor to make them fit better in AR viewing. This is optional and can be adjusted as needed.
 
   // Collect all unique orientations and colors across every instance
   const orientations = Array.from( { length: 60 }, () => new THREE.Matrix4() ); // ordered list of Matrix4 for registerSymmetryGroup
