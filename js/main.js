@@ -200,13 +200,11 @@ subscribeFor( 'SCENE_RENDERED', ( payload ) => {
   const STYLE_ID = "vzome-mesh";
 
   // Collect all unique orientations and colors across every instance
-  const orientationMatrixMap = new Map(); // orientation int → THREE.Matrix4
+  const orientations = Array.from( { length: 60 }, () => new THREE.Matrix4() ); // ordered list of Matrix4 for registerSymmetryGroup
   const colorIndexMap = new Map();        // hex string → colorIndex
   for ( const shape of Object.values( shapes ) ) {
     for ( const instance of shape.instances ) {
-      if ( !orientationMatrixMap.has( instance.orientation ) ) {
-        orientationMatrixMap.set( instance.orientation, new THREE.Matrix4().fromArray( instance.rotation ) );
-      }
+      orientations[ instance.orientation ] = new THREE.Matrix4().fromArray( instance.rotation ) .transpose();
       if ( !colorIndexMap.has( instance.color ) ) {
         const c = new THREE.Color( instance.color );
         const idx = symmetryRenderer.registerColor( new THREE.Vector3( c.r, c.g, c.b ) );
@@ -214,9 +212,6 @@ subscribeFor( 'SCENE_RENDERED', ( payload ) => {
       }
     }
   }
-
-  const orientationEntries = [ ...orientationMatrixMap.entries() ];
-  const orientations = orientationEntries.map( ( [ , m ] ) => m );
 
   // Register the new symmetry group and style
   symmetryRenderer.registerSymmetryGroup( GROUP_ID, orientations );
@@ -249,11 +244,10 @@ subscribeFor( 'SCENE_RENDERED', ( payload ) => {
   // Add each instance to its shape
   for ( const shape of Object.values( shapes ) ) {
     for ( const instance of shape.instances ) {
-      const orientationIndex = orientationEntries.findIndex( ( [ oi ] ) => oi === instance.orientation );
       const [ px, py, pz ] = instance.position;
       symmetryRenderer.addInstance( STYLE_ID, shape.id, {
         position: new THREE.Vector3( px * scale, py * scale, pz * scale ),
-        orientationIndex,
+        orientationIndex: instance.orientation,
         colorIndex: colorIndexMap.get( instance.color ),
       } );
     }
