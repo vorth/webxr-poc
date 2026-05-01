@@ -79,6 +79,7 @@ export async function setupRendering( appEl )
     });
     controller.addEventListener( 'squeezeend', () => {
       scene.attach( symmetryRenderer.originGroup );
+      if (instructionText) instructionText.visible = false;
     });
     scene.add( controller );
   }
