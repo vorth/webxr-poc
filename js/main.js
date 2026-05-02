@@ -168,6 +168,8 @@ function randomPosition() {
 }
 
 // --- In-scene HTML panel with 3 buttons ---
+const BTN_NORMAL = '#4a90d9';
+const BTN_HOVER  = '#74b3ff';
 const panel = document.createElement( 'div' );
 panel.style.cssText = 'width:220px;background:#1a1a2e;padding:14px;border-radius:10px;font-family:sans-serif;';
 [
@@ -178,13 +180,25 @@ panel.style.cssText = 'width:220px;background:#1a1a2e;padding:14px;border-radius
   const btn = document.createElement( 'button' );
   btn.id = id;
   btn.textContent = label;
-  btn.style.cssText = 'display:block;width:100%;margin:5px 0;padding:8px 0;font-size:16px;cursor:pointer;border:none;border-radius:6px;background:#4a90d9;color:#fff;';
+  btn.style.cssText = `display:block;width:100%;margin:5px 0;padding:8px 0;font-size:16px;cursor:pointer;border:none;border-radius:6px;background:${BTN_NORMAL};color:#fff;`;
   btn.addEventListener( 'click', () => console.log( `${label} clicked` ) );
   panel.appendChild( btn );
 } );
 document.body.appendChild( panel );
 panel.style.position = 'absolute';
 panel.style.top = '-9999px'; // keep off-screen but in DOM so HTMLMesh can render it
+
+// Mirrors htmlevent()'s own coordinate math: UV → viewport-absolute → which button?
+function getButtonAtUV( uv ) {
+  const panelRect = panel.getBoundingClientRect();
+  const x = uv.x * panelRect.width  + panelRect.left;
+  const y = ( 1 - uv.y ) * panelRect.height + panelRect.top;
+  for ( const btn of panel.querySelectorAll( 'button' ) ) {
+    const r = btn.getBoundingClientRect();
+    if ( x > r.left && x < r.right && y > r.top && y < r.bottom ) return btn;
+  }
+  return null;
+}
 
 const interactiveGroup = new InteractiveGroup();
 interactiveGroup.listenToXRControllerEvents( renderer.xr.getController( 0 ) );
@@ -196,7 +210,7 @@ htmlMesh.position.set( 0, 0.1, -0.9 );
 htmlMesh.scale.setScalar( 2 );
 interactiveGroup.add( htmlMesh );
 
-// Controller ray lines + hit dots
+// Controller ray lines + hit dots + button hover
 const _raycaster = new THREE.Raycaster();
 const _controllers = [ renderer.xr.getController( 0 ), renderer.xr.getController( 1 ) ];
 const _rayGeo = new THREE.BufferGeometry().setFromPoints( [ new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, 0, -1 ) ] );
@@ -215,8 +229,10 @@ for ( const controller of _controllers ) {
   dot.visible = false;
   controller.add( dot );
 }
+let _hoveredButton = null;
 addFrameCallback( () => {
   const presenting = renderer.xr.isPresenting;
+  let hitUV = null;
   for ( const controller of _controllers ) {
     const ray = controller.getObjectByName( 'ray' );
     const dot = controller.getObjectByName( 'dot' );
@@ -231,10 +247,18 @@ addFrameCallback( () => {
       ray.visible = true;
       dot.position.set( 0, 0, -dist );
       dot.visible = true;
+      if ( hitUV === null && hits[ 0 ].uv ) hitUV = hits[ 0 ].uv;
     } else {
       ray.visible = false;
       dot.visible = false;
     }
+  }
+  // Update button hover based on which button (if any) the first hitting controller points at
+  const newHovered = hitUV ? getButtonAtUV( hitUV ) : null;
+  if ( newHovered !== _hoveredButton ) {
+    if ( _hoveredButton ) _hoveredButton.style.background = BTN_NORMAL;
+    if ( newHovered ) newHovered.style.background = BTN_HOVER;
+    _hoveredButton = newHovered;
   }
 } );
 // --- end in-scene panel ---
