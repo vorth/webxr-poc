@@ -206,12 +206,14 @@ interactiveGroup.listenToXRControllerEvents( renderer.xr.getController( 1 ) );
 // interactiveGroup is added/removed on AR session start/end, not immediately
 
 const htmlMesh = new HTMLMesh( panel );
-htmlMesh.position.set( 0, 0.1, -0.9 );
 htmlMesh.scale.setScalar( 2 );
 interactiveGroup.add( htmlMesh );
 
+const _panelAngle = 35 * Math.PI / 180;
+const _panelDist = 1.3;
 let _hoveredButton = null;
-renderer.xr.addEventListener( 'sessionstart', () => scene.add( interactiveGroup ) );
+let _needsPanelPlacement = false;
+renderer.xr.addEventListener( 'sessionstart', () => { _needsPanelPlacement = true; scene.add( interactiveGroup ); } );
 renderer.xr.addEventListener( 'sessionend', () => {
   interactiveGroup.removeFromParent();
   if ( _hoveredButton ) { _hoveredButton.style.background = BTN_NORMAL; _hoveredButton = null; }
@@ -237,6 +239,23 @@ for ( const controller of _controllers ) {
   controller.add( dot );
 }
 addFrameCallback( () => {
+  if ( _needsPanelPlacement && renderer.xr.isPresenting ) {
+    const xrCamera = renderer.xr.getCamera();
+    const _vPos = new THREE.Vector3();
+    const _vQuat = new THREE.Quaternion();
+    xrCamera.getWorldPosition( _vPos );
+    xrCamera.getWorldQuaternion( _vQuat );
+    // Viewer's forward direction projected onto horizontal plane, then rotated 25° right
+    const _dir = new THREE.Vector3( 0, 0, -1 ).applyQuaternion( _vQuat );
+    _dir.y = 0;
+    _dir.normalize();
+    _dir.applyAxisAngle( new THREE.Vector3( 0, 1, 0 ), -_panelAngle );
+    interactiveGroup.position.copy( _vPos ).addScaledVector( _dir, _panelDist );
+    // Face horizontally toward the viewer
+    const _lookAt = new THREE.Vector3( _vPos.x, interactiveGroup.position.y, _vPos.z );
+    interactiveGroup.lookAt( _lookAt );
+    _needsPanelPlacement = false;
+  }
   const presenting = renderer.xr.isPresenting;
   let hitUV = null;
   for ( const controller of _controllers ) {
