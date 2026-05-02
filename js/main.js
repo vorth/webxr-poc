@@ -203,12 +203,19 @@ function getButtonAtUV( uv ) {
 const interactiveGroup = new InteractiveGroup();
 interactiveGroup.listenToXRControllerEvents( renderer.xr.getController( 0 ) );
 interactiveGroup.listenToXRControllerEvents( renderer.xr.getController( 1 ) );
-scene.add( interactiveGroup );
+// interactiveGroup is added/removed on AR session start/end, not immediately
 
 const htmlMesh = new HTMLMesh( panel );
 htmlMesh.position.set( 0, 0.1, -0.9 );
 htmlMesh.scale.setScalar( 2 );
 interactiveGroup.add( htmlMesh );
+
+let _hoveredButton = null;
+renderer.xr.addEventListener( 'sessionstart', () => scene.add( interactiveGroup ) );
+renderer.xr.addEventListener( 'sessionend', () => {
+  interactiveGroup.removeFromParent();
+  if ( _hoveredButton ) { _hoveredButton.style.background = BTN_NORMAL; _hoveredButton = null; }
+} );
 
 // Controller ray lines + hit dots + button hover
 const _raycaster = new THREE.Raycaster();
@@ -229,7 +236,6 @@ for ( const controller of _controllers ) {
   dot.visible = false;
   controller.add( dot );
 }
-let _hoveredButton = null;
 addFrameCallback( () => {
   const presenting = renderer.xr.isPresenting;
   let hitUV = null;
