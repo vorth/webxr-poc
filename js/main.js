@@ -1,11 +1,13 @@
 import { THREE, setupRendering } from "./scene.js";
 import { createWorker } from "./worker.js";
+import { HTMLMesh } from 'three/addons/interactive/HTMLMesh.js';
+import { InteractiveGroup } from 'three/addons/interactive/InteractiveGroup.js';
 
 
 const app = document.getElementById("app");
 
 
-const { symmetryRenderer, scene } = await setupRendering( app );
+const { symmetryRenderer, scene, renderer, camera, addFrameCallback } = await setupRendering( app );
 
 const messageEl = document.getElementById("message");
 const hudDesc = document.querySelector("#hud p");
@@ -164,6 +166,78 @@ function randomPosition() {
     THREE.MathUtils.randFloatSpread(0.5)
   );
 }
+
+// --- In-scene HTML panel with 3 buttons ---
+const panel = document.createElement( 'div' );
+panel.style.cssText = 'width:220px;background:#1a1a2e;padding:14px;border-radius:10px;font-family:sans-serif;';
+[
+  { label: 'Action A', id: 'btn-a' },
+  { label: 'Action B', id: 'btn-b' },
+  { label: 'Action C', id: 'btn-c' },
+].forEach( ( { label, id } ) => {
+  const btn = document.createElement( 'button' );
+  btn.id = id;
+  btn.textContent = label;
+  btn.style.cssText = 'display:block;width:100%;margin:5px 0;padding:8px 0;font-size:16px;cursor:pointer;border:none;border-radius:6px;background:#4a90d9;color:#fff;';
+  btn.addEventListener( 'click', () => console.log( `${label} clicked` ) );
+  panel.appendChild( btn );
+} );
+document.body.appendChild( panel );
+panel.style.position = 'absolute';
+panel.style.top = '-9999px'; // keep off-screen but in DOM so HTMLMesh can render it
+
+const interactiveGroup = new InteractiveGroup();
+interactiveGroup.listenToXRControllerEvents( renderer.xr.getController( 0 ) );
+interactiveGroup.listenToXRControllerEvents( renderer.xr.getController( 1 ) );
+scene.add( interactiveGroup );
+
+const htmlMesh = new HTMLMesh( panel );
+htmlMesh.position.set( 0, 0.1, -0.9 );
+htmlMesh.scale.setScalar( 2 );
+interactiveGroup.add( htmlMesh );
+
+// Controller ray lines + hit dots
+const _raycaster = new THREE.Raycaster();
+const _controllers = [ renderer.xr.getController( 0 ), renderer.xr.getController( 1 ) ];
+const _rayGeo = new THREE.BufferGeometry().setFromPoints( [ new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, 0, -1 ) ] );
+const _rayMat = new THREE.LineBasicMaterial( { color: 0xffffff, transparent: true, opacity: 0.6 } );
+const _dotGeo = new THREE.SphereGeometry( 0.006, 8, 6 );
+const _dotMat = new THREE.MeshBasicMaterial( { color: 0xffffff } );
+const DEFAULT_RAY_LENGTH = 2.0;
+for ( const controller of _controllers ) {
+  const ray = new THREE.Line( _rayGeo, _rayMat );
+  ray.name = 'ray';
+  ray.scale.z = DEFAULT_RAY_LENGTH;
+  ray.visible = false;
+  controller.add( ray );
+  const dot = new THREE.Mesh( _dotGeo, _dotMat );
+  dot.name = 'dot';
+  dot.visible = false;
+  controller.add( dot );
+}
+addFrameCallback( () => {
+  const presenting = renderer.xr.isPresenting;
+  for ( const controller of _controllers ) {
+    const ray = controller.getObjectByName( 'ray' );
+    const dot = controller.getObjectByName( 'dot' );
+    if ( !ray || !dot ) continue;
+    if ( !presenting ) { ray.visible = false; dot.visible = false; continue; }
+    controller.updateMatrixWorld();
+    _raycaster.setFromXRController( controller );
+    const hits = _raycaster.intersectObjects( interactiveGroup.children, true );
+    if ( hits.length > 0 ) {
+      const dist = hits[ 0 ].distance;
+      ray.scale.z = dist;
+      ray.visible = true;
+      dot.position.set( 0, 0, -dist );
+      dot.visible = true;
+    } else {
+      ray.visible = false;
+      dot.visible = false;
+    }
+  }
+} );
+// --- end in-scene panel ---
 
 const { subscribeFor, postMessage } = createWorker();
 

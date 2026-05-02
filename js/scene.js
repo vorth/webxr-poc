@@ -89,8 +89,10 @@ export async function setupRendering( appEl )
   const _forward = new THREE.Vector3();
   const _viewerPos = new THREE.Vector3();
   const _viewerQuat = new THREE.Quaternion();
+  const frameCallbacks = [];
   renderer.setAnimationLoop(() => {
     controls.update();
+    for ( const cb of frameCallbacks ) cb();
     renderer.render(scene, camera);
     if (needsInitialPlacement && renderer.xr.isPresenting) {
       const xrCamera = renderer.xr.getCamera();
@@ -123,5 +125,6 @@ export async function setupRendering( appEl )
     renderer,
     controls,
     symmetryRenderer,
+    addFrameCallback: ( fn ) => frameCallbacks.push( fn ),
   };
 }
