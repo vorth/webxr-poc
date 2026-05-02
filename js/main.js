@@ -277,7 +277,7 @@ const message = {
     url: "https://raw.githubusercontent.com/vorth/vzome-sharing/main/2026/01/20/04-44-10-077Z-JK-CRF-tet-first/JK-CRF-tet-first.vZome",
     config: {
       preview: true,
-      showScenes: "all",
+      showScenes: "none",
       camera: true,
       lighting: true,
       design: true,
