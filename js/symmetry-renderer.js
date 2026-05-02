@@ -114,7 +114,6 @@ export function createSymmetryRenderer(scene)
 
     if (activeGroupId !== null) {
       const previous = symmetryGroups.get(activeGroupId);
-      clearGroupInstances(previous);
       setGroupMeshesCount(previous, 0);
     }
 
@@ -122,6 +121,7 @@ export function createSymmetryRenderer(scene)
     ensureGroupHasActiveStyle(nextGroup);
     addGroupMeshesToScene(nextGroup);
     activeGroupId = groupId;
+    syncAllInstancesForGroup(nextGroup);
 
     if (discardUnusedShaders) {
       for (const group of symmetryGroups.values()) {

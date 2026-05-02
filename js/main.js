@@ -11,9 +11,6 @@ const { symmetryRenderer, scene, renderer, camera, addFrameCallback } = await se
 
 const messageEl = document.getElementById("message");
 const hudDesc = document.querySelector("#hud p");
-const groupSelectEl = document.getElementById("group-select");
-const styleSelectEl = document.getElementById("style-select");
-const regenerateButton = document.getElementById("regenerate");
 
 const showMessage = (text) => {
   messageEl.textContent = text;
@@ -25,147 +22,39 @@ const showMessage = (text) => {
 //   throw new Error("WebGPU not supported");
 // }
 
-const scale = 0.03; // geometries here were not designed for AR scale, so we apply a global scale factor to make them fit better in AR viewing. This is optional and can be adjusted as needed.
+const config = {
+  preview: true,
+  showScenes: "none",
+  camera: true,
+  lighting: true,
+  design: true,
+  labels: false,
+  showSettings: true,
+  download: true,
+  useSpinner: false,
+  load: {
+    camera: true,
+    lighting: true,
+    design: true,
+  },
+  snapshot: -1,
+};
 
-// Register default color palette
-// symmetryRenderer.registerColor(new THREE.Vector3(0,0,1)); // blue
-symmetryRenderer.registerColor(new THREE.Vector3(1,0,0)); // red
-symmetryRenderer.registerColor(new THREE.Vector3(0.4,0,1));   // purple
-// symmetryRenderer.registerColor(new THREE.Vector3(1,1,0));   // yellow
-symmetryRenderer.registerColor(new THREE.Vector3(0,1,0));   // green
-  
-symmetryRenderer.registerSymmetryGroup("tilted-bars", [
-  new THREE.Euler(1.0, 1.0, 0),
-  new THREE.Euler(1.0, 2.0, 1.0),
-  new THREE.Euler(0, 1.0, 3.0)
-]);
-symmetryRenderer.registerStyle("tilted-bars", "rounded");
-symmetryRenderer.registerShape("tilted-bars", "rounded", "thin", new THREE.CylinderGeometry(0.12 * scale, 0.12 * scale, 2.0 * scale, 28));
-symmetryRenderer.registerShape("tilted-bars", "rounded", "wide", new THREE.CylinderGeometry(0.85 * scale, 0.85 * scale, 0.22 * scale, 28));
-symmetryRenderer.registerStyle("tilted-bars", "default");
-symmetryRenderer.registerShape("tilted-bars", "default", "thin", new THREE.BoxGeometry(0.22 * scale, 2.0 * scale, 0.22 * scale));
-symmetryRenderer.registerShape("tilted-bars", "default", "wide", new THREE.BoxGeometry(1.9 * scale, 0.24 * scale, 0.85 * scale));
+let loadingUrl = null;
 
-symmetryRenderer.registerSymmetryGroup("axis-aligned", [
-  new THREE.Euler(0, 0, 0),
-  new THREE.Euler(Math.PI * 0.5, 0, 0),
-  new THREE.Euler(0, Math.PI * 0.5, 0)
-]);
-symmetryRenderer.registerStyle("axis-aligned", "beams");
-symmetryRenderer.registerShape("axis-aligned", "beams", "column", new THREE.BoxGeometry(0.3 * scale, 2.2 * scale, 0.3 * scale));
-symmetryRenderer.registerShape("axis-aligned", "beams", "slab", new THREE.BoxGeometry(2.1 * scale, 0.2 * scale, 0.75 * scale));
-symmetryRenderer.registerStyle("axis-aligned", "planks");
-symmetryRenderer.registerShape("axis-aligned", "planks", "column", new THREE.CylinderGeometry(0.15 * scale, 0.15 * scale, 2.2 * scale, 28));
-symmetryRenderer.registerShape("axis-aligned", "planks", "slab", new THREE.BoxGeometry(2.5 * scale, 0.12 * scale, 1.0 * scale));
-
-symmetryRenderer.switchSymmetryGroup("axis-aligned");
-
-const RANDOM_INSTANCE_COUNT = 400;
-populateRandomInstances(RANDOM_INSTANCE_COUNT);
-
-refreshUI();
-
-if (groupSelectEl) {
-  groupSelectEl.addEventListener("change", (event) => {
-    const groupId = event.target.value;
-    try {
-      symmetryRenderer.clearActiveInstances();
-      symmetryRenderer.switchSymmetryGroup(groupId);
-      populateRandomInstances(RANDOM_INSTANCE_COUNT);
-      refreshUI();
-    } catch (error) {
-      showMessage(error.message);
-    }
-  });
-}
-
-if (styleSelectEl) {
-  styleSelectEl.addEventListener("change", (event) => {
-    const styleId = event.target.value;
-    try {
-      symmetryRenderer.switchStyle(styleId);
-      refreshUI();
-    } catch (error) {
-      showMessage(error.message);
-    }
-  });
-}
-
-if (regenerateButton) {
-  regenerateButton.addEventListener("click", () => {
-    symmetryRenderer.clearActiveInstances();
-    populateRandomInstances(RANDOM_INSTANCE_COUNT);
-  });
-}
-
-function refreshUI() {
-  if (groupSelectEl) {
-    const previous = groupSelectEl.value;
-    groupSelectEl.innerHTML = "";
-    for (const groupId of symmetryRenderer.getGroupIds()) {
-      const option = document.createElement("option");
-      option.value = groupId;
-      option.textContent = groupId;
-      groupSelectEl.appendChild(option);
-    }
-    const activeGroupId = symmetryRenderer.getActiveGroupId();
-    if (activeGroupId) {
-      groupSelectEl.value = activeGroupId;
-    } else if (previous) {
-      groupSelectEl.value = previous;
-    }
-  }
-
-  if (styleSelectEl) {
-    styleSelectEl.innerHTML = "";
-    const activeGroup = symmetryRenderer.getActiveGroupId() ? symmetryRenderer.getActiveGroup() : null;
-    if (!activeGroup) {
-      styleSelectEl.disabled = true;
-    } else {
-      for (const styleId of activeGroup.styles.keys()) {
-        const option = document.createElement("option");
-        option.value = styleId;
-        option.textContent = styleId;
-        styleSelectEl.appendChild(option);
-      }
-      styleSelectEl.disabled = activeGroup.styles.size === 0;
-      if (activeGroup.activeStyleId && activeGroup.styles.has(activeGroup.activeStyleId)) {
-        styleSelectEl.value = activeGroup.activeStyleId;
-      }
-    }
-  }
-
-  if (hudDesc) {
-    const activeGroup = symmetryRenderer.getActiveGroupId() ? symmetryRenderer.getActiveGroup() : null;
-    if (activeGroup) {
-      const styleText = activeGroup.activeStyleId ? `active style '${activeGroup.activeStyleId}'` : "no active style";
-      hudDesc.textContent = `${activeGroup.id}: ${activeGroup.orientations.length} orientations, ${styleText}`;
-    }
-  }
-}
-
-function populateRandomInstances(count)
-{
-  const keys = symmetryRenderer.listShapeKeys(symmetryRenderer.getActiveGroup(), symmetryRenderer.getActiveGroup().activeStyleId);
-  if (keys.length === 0) {
+const loadModel = ( url ) => {
+  // showMessage( "Loading model..." );
+  // if url is in symmetryRenderer.getGroupIds, just switch to it instead of re-loading and re-processing the same model again
+  if ( symmetryRenderer.getGroupIds().includes( url ) ) {
+    symmetryRenderer.switchSymmetryGroup( url );
     return;
   }
-
-  for (let i = 0; i < count; i += 1) {
-    const selection = keys[Math.floor(Math.random() * keys.length)];
-    symmetryRenderer.addInstance(selection.styleId, selection.shapeId, {
-      position: randomPosition(),
-      highlight: Math.random() < 0.05 ? 0.35 : 0
-    });
-  }
-}
-function randomPosition() {
-  return new THREE.Vector3(
-    THREE.MathUtils.randFloatSpread(0.5),
-    THREE.MathUtils.randFloatSpread(0.3),
-    THREE.MathUtils.randFloatSpread(0.5)
-  );
-}
+  loadingUrl = url;
+  postMessage( {
+    type: "URL_PROVIDED",
+    payload: { url, config}
+  } );
+};
 
 // --- In-scene HTML panel with 3 buttons ---
 const BTN_NORMAL = '#4a90d9';
@@ -173,15 +62,16 @@ const BTN_HOVER  = '#74b3ff';
 const panel = document.createElement( 'div' );
 panel.style.cssText = 'width:220px;background:#1a1a2e;padding:14px;border-radius:10px;font-family:sans-serif;';
 [
-  { label: 'Action A', id: 'btn-a' },
-  { label: 'Action B', id: 'btn-b' },
-  { label: 'Action C', id: 'btn-c' },
-].forEach( ( { label, id } ) => {
+  { label: 'Laves Unit Cell', id: 'btn-a', url: 'https://raw.githubusercontent.com/vorth/vzome-sharing/main/2025/08/20/18-28-08-laves-unit-cell/laves-unit-cell.vZome' },
+  { label: 'JK 4D CRF', id: 'btn-c', url: 'https://raw.githubusercontent.com/vorth/vzome-sharing/main/2026/01/08/04-16-34-229Z-Potentially-new-polytope/Potentially-new-polytope.vZome' },
+  { label: 'C960', id: 'btn-b', url: 'https://gist.githubusercontent.com/vorth/2d880fe088bf3bf16a866d48e5057d43/raw/61eeec45fa2d7424c2e2fd3355fc12530256c7a6/C960-round.vZome' },
+  { label: 'Ghee Beom Kim snub', id: 'btn-d', url: 'https://raw.githubusercontent.com/vorth/vzome-sharing/main/2025/12/31/02-49-18-356Z-Ghee-Beom-Kim-snub-design/Ghee-Beom-Kim-snub-design.vZome' },
+].forEach( ( { label, id, url  } ) => {
   const btn = document.createElement( 'button' );
   btn.id = id;
   btn.textContent = label;
   btn.style.cssText = `display:block;width:100%;margin:5px 0;padding:8px 0;font-size:16px;cursor:pointer;border:none;border-radius:6px;background:${BTN_NORMAL};color:#fff;`;
-  btn.addEventListener( 'click', () => console.log( `${label} clicked` ) );
+  btn.addEventListener( 'click', () => loadModel( url ) );
   panel.appendChild( btn );
 } );
 document.body.appendChild( panel );
@@ -290,37 +180,12 @@ addFrameCallback( () => {
 
 const { subscribeFor, postMessage } = createWorker();
 
-const message = {
-  type: "URL_PROVIDED",
-  payload: {
-    url: "https://raw.githubusercontent.com/vorth/vzome-sharing/main/2026/01/20/04-44-10-077Z-JK-CRF-tet-first/JK-CRF-tet-first.vZome",
-    config: {
-      preview: true,
-      showScenes: "none",
-      camera: true,
-      lighting: true,
-      design: true,
-      labels: false,
-      showSettings: true,
-      download: true,
-      useSpinner: false,
-      url: "https://raw.githubusercontent.com/vorth/vzome-sharing/main/2026/01/20/04-44-10-077Z-JK-CRF-tet-first/JK-CRF-tet-first.vZome",
-      load: {
-        camera: true,
-        lighting: true,
-        design: true,
-      },
-      snapshot: -1,
-    },
-  },
-};
-
 subscribeFor( 'SCENE_RENDERED', ( payload ) => {
   console.log( 'SCENE_RENDERED payload:', payload );
   const shapes = payload?.scene?.shapes;
   if ( !shapes ) return;
-  const GROUP_ID = "vzome-icosahedral";
-  const STYLE_ID = "vzome-mesh";
+  const GROUP_ID = loadingUrl;
+  const STYLE_ID = "preview-shapes";
 
   const scale = 0.008; // geometries here were not designed for AR scale, so we apply a global scale factor to make them fit better in AR viewing. This is optional and can be adjusted as needed.
 
@@ -383,7 +248,6 @@ subscribeFor( 'SCENE_RENDERED', ( payload ) => {
       } );
     }
   }
-  refreshUI();
 } );
 
-postMessage( message );
+loadModel( 'https://raw.githubusercontent.com/vorth/vzome-sharing/main/2025/12/31/02-49-18-356Z-Ghee-Beom-Kim-snub-design/Ghee-Beom-Kim-snub-design.vZome' );
