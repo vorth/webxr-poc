@@ -180,7 +180,6 @@ export function createSymmetryRenderer(scene)
     const color = normalizeColorInput(colorInput);
     colorMatrices.push(color);
     colorPalette = uniformArray(colorMatrices);
-    rebuildGpuForColorPaletteChange();
     return colorMatrices.length - 1;
   }
 
@@ -233,22 +232,6 @@ export function createSymmetryRenderer(scene)
     setGroupMeshesCount(group, 0);
   }
 
-  function rebuildGpuForColorPaletteChange() {
-    for (const group of symmetryGroups.values()) {
-      if (group.gpu) {
-        disposeGroupGpu(group);
-      }
-    }
-
-    if (activeGroupId === null) {
-      return;
-    }
-
-    const group = getActiveGroup();
-    ensureGroupGpu(group);
-    addGroupMeshesToScene(group);
-    syncAllInstancesForGroup(group);
-  }
 
   function createMaterialForGroup(group) {
     const orientationUniform = uniformArray(group.orientations);
