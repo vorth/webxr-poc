@@ -56,17 +56,28 @@ const loadModel = ( url ) => {
   } );
 };
 
-// --- In-scene HTML panel with 3 buttons ---
+// --- In-scene HTML panel with 4 buttons ---
 const BTN_NORMAL = '#4a90d9';
 const BTN_HOVER  = '#74b3ff';
-const panel = document.createElement( 'div' );
-panel.style.cssText = 'width:220px;background:#1a1a2e;padding:14px;border-radius:10px;font-family:sans-serif;';
-[
+const MENU_ITEMS = [
   { label: 'Laves Unit Cell', id: 'btn-a', url: 'https://raw.githubusercontent.com/vorth/vzome-sharing/main/2025/08/20/18-28-08-laves-unit-cell/laves-unit-cell.vZome' },
   { label: 'JK 4D CRF', id: 'btn-c', url: 'https://raw.githubusercontent.com/vorth/vzome-sharing/main/2026/01/08/04-16-34-229Z-Potentially-new-polytope/Potentially-new-polytope.vZome' },
   { label: 'C960', id: 'btn-b', url: 'https://gist.githubusercontent.com/vorth/2d880fe088bf3bf16a866d48e5057d43/raw/61eeec45fa2d7424c2e2fd3355fc12530256c7a6/C960-round.vZome' },
   { label: 'Ghee Beom Kim snub', id: 'btn-d', url: 'https://raw.githubusercontent.com/vorth/vzome-sharing/main/2025/12/31/02-49-18-356Z-Ghee-Beom-Kim-snub-design/Ghee-Beom-Kim-snub-design.vZome' },
-].forEach( ( { label, id, url  } ) => {
+];
+
+// 2D on-screen menu (hidden during XR sessions)
+const modelMenu = document.getElementById( 'model-menu' );
+MENU_ITEMS.forEach( ( { label, url } ) => {
+  const btn = document.createElement( 'button' );
+  btn.textContent = label;
+  btn.addEventListener( 'click', () => loadModel( url ) );
+  modelMenu.appendChild( btn );
+} );
+
+const panel = document.createElement( 'div' );
+panel.style.cssText = 'width:220px;background:#1a1a2e;padding:14px;border-radius:10px;font-family:sans-serif;';
+MENU_ITEMS.forEach( ( { label, id, url } ) => {
   const btn = document.createElement( 'button' );
   btn.id = id;
   btn.textContent = label;
@@ -103,10 +114,11 @@ const _panelAngle = 35 * Math.PI / 180;
 const _panelDist = 1.3;
 let _hoveredButton = null;
 let _needsPanelPlacement = false;
-renderer.xr.addEventListener( 'sessionstart', () => { _needsPanelPlacement = true; scene.add( interactiveGroup ); } );
+renderer.xr.addEventListener( 'sessionstart', () => { _needsPanelPlacement = true; scene.add( interactiveGroup ); modelMenu.style.display = 'none'; } );
 renderer.xr.addEventListener( 'sessionend', () => {
   interactiveGroup.removeFromParent();
   if ( _hoveredButton ) { _hoveredButton.style.background = BTN_NORMAL; _hoveredButton = null; }
+  modelMenu.style.display = '';
 } );
 
 // Controller ray lines + hit dots + button hover

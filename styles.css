@@ -114,3 +114,31 @@ body {
   font-size: 12px;
   display: none;
 }
+
+#model-menu {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#model-menu button {
+  padding: 8px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid rgba(150, 180, 220, 0.35);
+  border-radius: 6px;
+  background: rgba(40, 80, 140, 0.7);
+  color: var(--text);
+  backdrop-filter: blur(6px);
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+#model-menu button:hover {
+  background: rgba(74, 144, 217, 0.85);
+}
