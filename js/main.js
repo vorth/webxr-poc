@@ -5,7 +5,7 @@ import { createWorker } from "./worker.js";
 const app = document.getElementById("app");
 
 
-const { symmetryRenderer, scene, renderer, camera, addFrameCallback } = await setupRendering( app );
+const { symmetryRenderer, scene, renderer, camera, } = await setupRendering( app );
 
 const messageEl = document.getElementById("message");
 const hudDesc = document.querySelector("#hud p");
