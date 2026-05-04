@@ -52,6 +52,9 @@ export async function setupRendering( appEl )
       // Toggle scene background/fog and orbit controls for AR passthrough
       const _origBackground = scene.background;
       const _origFog = scene.fog;
+      const _origFov = camera.fov;
+      const _origCameraPos = camera.position.clone();
+      const _origControlsTarget = controls.target.clone();
       renderer.xr.addEventListener('sessionstart', () => {
         scene.background = null;
         scene.fog = null;
@@ -62,9 +65,13 @@ export async function setupRendering( appEl )
       renderer.xr.addEventListener('sessionend', () => {
         scene.background = _origBackground;
         scene.fog = _origFog;
+        camera.fov = _origFov;
+        camera.position.copy( _origCameraPos );
+        controls.target.copy( _origControlsTarget );
         controls.enabled = true;
         instructionText.visible = false;
         symmetryRenderer.setOrigin( new THREE.Vector3(0, 0, 0) );
+        onResize();
       });
     }
   }
