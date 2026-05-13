@@ -146,3 +146,11 @@ subscribeFor( 'SCENE_RENDERED', ( payload ) => {
 } );
 
 loadModel( 'https://raw.githubusercontent.com/vorth/vzome-sharing/main/2025/12/31/02-49-18-356Z-Ghee-Beom-Kim-snub-design/Ghee-Beom-Kim-snub-design.vZome' );
+
+renderer.domElement.addEventListener( 'pointerdown', async ( e ) => {
+  const hit = await symmetryRenderer.pickAt( e.clientX, e.clientY, renderer, camera );
+  symmetryRenderer.clearHighlights();
+  if ( hit ) {
+    symmetryRenderer.setInstanceHighlight( hit.shapeId, hit.instanceId, 1 );
+  }
+} );

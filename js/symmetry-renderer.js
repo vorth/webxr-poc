@@ -1,8 +1,12 @@
 import {
   Fn,
   attribute,
+  float,
+  floor,
+  mod,
   positionLocal,
   uniformArray,
+  vec3,
   vec4
 } from "three/tsl";
 import { THREE } from "./scene.js";
@@ -93,10 +97,11 @@ export function createSymmetryRenderer(scene)
       if (!group.gpu.shapeEntries.has(slotId)) {
         const activeGeom = (group.activeStyleId && slotCache.get(group.activeStyleId))
           ?? slotCache.values().next().value;
-        const entry = createShapeEntry(slotId, activeGeom, group.gpu.material);
+        const entry = createShapeEntry(slotId, activeGeom, group.gpu.material, group.gpu.pickingMaterial);
         group.gpu.shapeEntries.set(slotId, entry);
         if (group.id === activeGroupId) {
           originGroup.add(entry.mesh);
+          group.gpu.pickingOriginGroup.add(entry.pickingMesh);
         }
       }
     }
@@ -165,7 +170,7 @@ export function createSymmetryRenderer(scene)
     const oldGeom = entry.mesh.geometry;
     if (oldGeom === newGeom) return;
 
-    for (const name of ["orientationIndex", "instanceTranslation", "colorIndex", "highlightIntensity"]) {
+    for (const name of ["orientationIndex", "instanceTranslation", "colorIndex", "highlightIntensity", "pickingId"]) {
       const attr = oldGeom.getAttribute(name);
       if (attr) {
         oldGeom.deleteAttribute(name);
@@ -173,6 +178,9 @@ export function createSymmetryRenderer(scene)
       }
     }
     entry.mesh.geometry = newGeom;
+    if (entry.pickingMesh) {
+      entry.pickingMesh.geometry = newGeom;
+    }
     // oldGeom is still in the cache with only base vertex data, ready for the next switch back
   }
 
@@ -256,28 +264,49 @@ export function createSymmetryRenderer(scene)
     material.colorNode = indexedColorNode;
     // Use white for emissive light, modulated by highlight intensity
     material.emissiveNode = vec4(1.0, 1.0, 1.0, 1.0).xyz.mul(highlightIntensityNode);
-    return material;
+
+    // Picking material: encodes per-instance ID into RGB, shares the same vertex transform
+    const pickingIdNode = attribute("pickingId", "float");
+    // R = id % 256, G = floor(id/256) % 256, B = floor(id/65536)
+    const pickingColorNode = vec3(
+      mod(pickingIdNode, float(256.0)).div(255.0),
+      mod(floor(pickingIdNode.div(float(256.0))), float(256.0)).div(255.0),
+      floor(pickingIdNode.div(float(65536.0))).div(255.0)
+    );
+    const pickingMaterial = new THREE.MeshBasicNodeMaterial({ toneMapped: false });
+    pickingMaterial.positionNode = rotatedPositionNode;
+    pickingMaterial.colorNode = pickingColorNode;
+
+    return { material, pickingMaterial };
   }
 
   // meshGeometry is a pre-cloned cached geometry; it is used directly (not cloned again)
-  function createShapeEntry(slotId, meshGeometry, material) {
+  function createShapeEntry(slotId, meshGeometry, material, pickingMaterial) {
     const mesh = new THREE.InstancedMesh(meshGeometry, material, INITIAL_SHAPE_CAPACITY);
     const orientBuffer = new Float32Array(INITIAL_SHAPE_CAPACITY);
     const translationBuffer = new Float32Array(INITIAL_SHAPE_CAPACITY * 3);
     const colorIndexBuffer = new Float32Array(INITIAL_SHAPE_CAPACITY);
     const highlightBuffer = new Float32Array(INITIAL_SHAPE_CAPACITY);
-    attachAttributes(mesh.geometry, orientBuffer, translationBuffer, colorIndexBuffer, highlightBuffer);
+    const pickingIdBuffer = new Float32Array(INITIAL_SHAPE_CAPACITY);
+    attachAttributes(mesh.geometry, orientBuffer, translationBuffer, colorIndexBuffer, highlightBuffer, pickingIdBuffer);
     initializeIdentityMatrices(mesh, INITIAL_SHAPE_CAPACITY);
     mesh.count = 0;
+
+    // Picking mesh shares the same geometry (and therefore all instanced attributes)
+    const pickingMesh = new THREE.InstancedMesh(meshGeometry, pickingMaterial, INITIAL_SHAPE_CAPACITY);
+    initializeIdentityMatrices(pickingMesh, INITIAL_SHAPE_CAPACITY);
+    pickingMesh.count = 0;
 
     return {
       slotId,
       capacity: INITIAL_SHAPE_CAPACITY,
       mesh,
+      pickingMesh,
       orientBuffer,
       translationBuffer,
       colorIndexBuffer,
-      highlightBuffer
+      highlightBuffer,
+      pickingIdBuffer,
     };
   }
 
@@ -286,7 +315,7 @@ export function createSymmetryRenderer(scene)
       return;
     }
 
-    const material = createMaterialForGroup(group);
+    const { material, pickingMaterial } = createMaterialForGroup(group);
 
     // Pre-clone one geometry per slot per style so style switches need no allocation
     const cachedGeometries = new Map();
@@ -308,11 +337,21 @@ export function createSymmetryRenderer(scene)
       const geom = (group.activeStyleId && slotCache.get(group.activeStyleId))
         ?? slotCache.values().next().value;
       if (geom) {
-        shapeEntries.set(slotId, createShapeEntry(slotId, geom, material));
+        shapeEntries.set(slotId, createShapeEntry(slotId, geom, material, pickingMaterial));
       }
     }
 
-    group.gpu = { material, shapeEntries, cachedGeometries };
+    // Picking scene: mirrors the visible geometry with ID-encoded colors for hit detection
+    const pickingScene = new THREE.Scene();
+    const pickingOriginGroup = new THREE.Group();
+    pickingScene.add(pickingOriginGroup);
+    // Use RenderTarget (not WebGLRenderTarget) so the WebGPU renderer registers the texture
+    const pickingTarget = new THREE.RenderTarget(1, 1, {
+      type: THREE.UnsignedByteType,
+      format: THREE.RGBAFormat,
+    });
+
+    group.gpu = { material, pickingMaterial, shapeEntries, cachedGeometries, pickingScene, pickingOriginGroup, pickingTarget };
   }
 
   function addGroupMeshesToScene(group) {
@@ -323,6 +362,9 @@ export function createSymmetryRenderer(scene)
       if (entry.mesh.parent !== originGroup) {
         originGroup.add(entry.mesh);
       }
+      if (entry.pickingMesh && entry.pickingMesh.parent !== group.gpu.pickingOriginGroup) {
+        group.gpu.pickingOriginGroup.add(entry.pickingMesh);
+      }
     }
   }
 
@@ -332,6 +374,9 @@ export function createSymmetryRenderer(scene)
     }
     for (const entry of group.gpu.shapeEntries.values()) {
       entry.mesh.count = count;
+      if (entry.pickingMesh) {
+        entry.pickingMesh.count = count;
+      }
     }
   }
 
@@ -352,13 +397,16 @@ export function createSymmetryRenderer(scene)
     }
 
     const shapeMap = group.instancesByShape.get(slotId);
-    const instances = shapeMap ? Array.from(shapeMap.values()) : [];
+    const instances = shapeMap ? Array.from(shapeMap.entries()) : [];
     ensureShapeCapacity(group, slotId, instances.length);
 
     const currentEntry = group.gpu.shapeEntries.get(slotId);
     currentEntry.mesh.count = instances.length;
+    if (currentEntry.pickingMesh) {
+      currentEntry.pickingMesh.count = instances.length;
+    }
     for (let i = 0; i < instances.length; i += 1) {
-      const { position, orientationIndex, colorIndex, highlight = 0 } = instances[i];
+      const [instanceId, { position, orientationIndex, colorIndex, highlight = 0 }] = instances[i];
       currentEntry.orientBuffer[i] = orientationIndex;
       const base = i * 3;
       currentEntry.translationBuffer[base] = position.x;
@@ -366,12 +414,15 @@ export function createSymmetryRenderer(scene)
       currentEntry.translationBuffer[base + 2] = position.z;
       currentEntry.colorIndexBuffer[i] = colorIndex;
       currentEntry.highlightBuffer[i] = highlight;
+      currentEntry.pickingIdBuffer[i] = instanceId;
     }
 
-    currentEntry.mesh.geometry.getAttribute("orientationIndex").needsUpdate = true;
-    currentEntry.mesh.geometry.getAttribute("instanceTranslation").needsUpdate = true;
-    currentEntry.mesh.geometry.getAttribute("colorIndex").needsUpdate = true;
-    currentEntry.mesh.geometry.getAttribute("highlightIntensity").needsUpdate = true;
+    const geom = currentEntry.mesh.geometry;
+    geom.getAttribute("orientationIndex").needsUpdate = true;
+    geom.getAttribute("instanceTranslation").needsUpdate = true;
+    geom.getAttribute("colorIndex").needsUpdate = true;
+    geom.getAttribute("highlightIntensity").needsUpdate = true;
+    geom.getAttribute("pickingId").needsUpdate = true;
   }
 
   function ensureShapeCapacity(group, key, needed) {
@@ -385,10 +436,12 @@ export function createSymmetryRenderer(scene)
     const nextTranslation = new Float32Array(expandedCapacity * 3);
     const nextColor = new Float32Array(expandedCapacity);
     const nextHighlight = new Float32Array(expandedCapacity);
+    const nextPickingId = new Float32Array(expandedCapacity);
     nextOrient.set(entry.orientBuffer);
     nextTranslation.set(entry.translationBuffer);
     nextColor.set(entry.colorIndexBuffer);
     nextHighlight.set(entry.highlightBuffer);
+    nextPickingId.set(entry.pickingIdBuffer);
 
     const previousMesh = entry.mesh;
     const previousGeometry = previousMesh.geometry;
@@ -397,7 +450,7 @@ export function createSymmetryRenderer(scene)
     const activeStyle = group.styles.get(group.activeStyleId);
     const sourceGeom = activeStyle ? activeStyle.geometries.get(entry.slotId) : null;
     const nextGeometry = sourceGeom ? sourceGeom.clone() : previousGeometry.clone();
-    attachAttributes(nextGeometry, nextOrient, nextTranslation, nextColor, nextHighlight);
+    attachAttributes(nextGeometry, nextOrient, nextTranslation, nextColor, nextHighlight, nextPickingId);
 
     // Update the geometry cache: replace the active style's entry with the new geometry
     const slotCache = group.gpu.cachedGeometries.get(entry.slotId);
@@ -413,6 +466,17 @@ export function createSymmetryRenderer(scene)
       originGroup.remove(previousMesh);
       originGroup.add(nextMesh);
     }
+
+    const nextPickingMesh = new THREE.InstancedMesh(nextGeometry, group.gpu.pickingMaterial, expandedCapacity);
+    initializeIdentityMatrices(nextPickingMesh, expandedCapacity);
+    nextPickingMesh.count = previousMesh.count;
+
+    const previousPickingMesh = entry.pickingMesh;
+    if (previousPickingMesh && previousPickingMesh.parent === group.gpu.pickingOriginGroup) {
+      group.gpu.pickingOriginGroup.remove(previousPickingMesh);
+      group.gpu.pickingOriginGroup.add(nextPickingMesh);
+    }
+
     // The old geometry is no longer in the cache; defer disposal to avoid destroying
     // buffers that the current frame's command buffer may still reference
     requestAnimationFrame(() => previousGeometry.dispose());
@@ -421,18 +485,21 @@ export function createSymmetryRenderer(scene)
       ...entry,
       capacity: expandedCapacity,
       mesh: nextMesh,
+      pickingMesh: nextPickingMesh,
       orientBuffer: nextOrient,
       translationBuffer: nextTranslation,
       colorIndexBuffer: nextColor,
-      highlightBuffer: nextHighlight
+      highlightBuffer: nextHighlight,
+      pickingIdBuffer: nextPickingId,
     });
   }
 
-  function attachAttributes(geometry, orientBuffer, translationBuffer, colorIndexBuffer, highlightBuffer) {
+  function attachAttributes(geometry, orientBuffer, translationBuffer, colorIndexBuffer, highlightBuffer, pickingIdBuffer) {
     geometry.setAttribute("orientationIndex", new THREE.InstancedBufferAttribute(orientBuffer, 1));
     geometry.setAttribute("instanceTranslation", new THREE.InstancedBufferAttribute(translationBuffer, 3));
     geometry.setAttribute("colorIndex", new THREE.InstancedBufferAttribute(colorIndexBuffer, 1));
     geometry.setAttribute("highlightIntensity", new THREE.InstancedBufferAttribute(highlightBuffer, 1));
+    geometry.setAttribute("pickingId", new THREE.InstancedBufferAttribute(pickingIdBuffer, 1));
   }
 
   function initializeIdentityMatrices(mesh, capacity) {
@@ -452,6 +519,9 @@ export function createSymmetryRenderer(scene)
       if (entry.mesh.parent === originGroup) {
         originGroup.remove(entry.mesh);
       }
+      if (entry.pickingMesh && entry.pickingMesh.parent === group.gpu.pickingOriginGroup) {
+        group.gpu.pickingOriginGroup.remove(entry.pickingMesh);
+      }
       // Geometry is owned by cachedGeometries; disposed below
     }
     for (const slotCache of group.gpu.cachedGeometries.values()) {
@@ -460,6 +530,8 @@ export function createSymmetryRenderer(scene)
       }
     }
     group.gpu.material.dispose();
+    group.gpu.pickingMaterial.dispose();
+    group.gpu.pickingTarget.dispose();
     group.gpu = null;
   }
 
@@ -616,6 +688,67 @@ export function createSymmetryRenderer(scene)
     return keys;
   }
 
+  // GPU picking: render an offscreen pass with per-instance ID colors, read back the pixel under
+  // the cursor, and return the hit { shapeId, instanceId } or null for background.
+  // Instance IDs are encoded as 24-bit values across RGB (up to ~16.7M unique instances).
+  async function pickAt(clientX, clientY, renderer, camera) {
+    if (activeGroupId === null) return null;
+    const group = symmetryGroups.get(activeGroupId);
+    if (!group || !group.gpu) return null;
+
+    const { pickingScene, pickingOriginGroup: pickGroup, pickingTarget } = group.gpu;
+
+    // Sync picking group transform with the visible origin group
+    pickGroup.position.copy(originGroup.position);
+    pickGroup.quaternion.copy(originGroup.quaternion);
+    pickGroup.scale.copy(originGroup.scale);
+    pickGroup.updateMatrixWorld(true);
+
+    // Resize render target to match canvas if needed
+    const canvas = renderer.domElement;
+    const w = canvas.width;
+    const h = canvas.height;
+    if (pickingTarget.width !== w || pickingTarget.height !== h) {
+      pickingTarget.setSize(w, h);
+    }
+
+    // Render picking pass with transparent clear so background pixels have alpha=0
+    const prevClearColor = new THREE.Color();
+    const prevClearAlpha = renderer.getClearAlpha();
+    renderer.getClearColor(prevClearColor);
+    renderer.setClearColor(0x000000, 0);
+    renderer.setRenderTarget(pickingTarget);
+    renderer.render(pickingScene, camera);
+    renderer.setRenderTarget(null);
+    renderer.setClearColor(prevClearColor, prevClearAlpha);
+
+    // Convert CSS client coordinates to render target pixel coordinates
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = w / rect.width;
+    const scaleY = h / rect.height;
+    const pixelX = Math.floor((clientX - rect.left) * scaleX);
+    const pixelY = Math.floor((clientY - rect.top) * scaleY);
+    const readY = h - pixelY - 1; // WebGL origin is bottom-left
+
+    // Read back the single pixel under the cursor
+    // readRenderTargetPixelsAsync returns a typed array (WebGPU renderer API)
+    const pixelBuffer = await renderer.readRenderTargetPixelsAsync(pickingTarget, pixelX, readY, 1, 1);
+
+    if (pixelBuffer[3] === 0) return null; // transparent = background
+
+    // Decode 24-bit instance ID from RGB channels
+    const instanceId = pixelBuffer[0] + pixelBuffer[1] * 256 + pixelBuffer[2] * 65536;
+    if (instanceId === 0) return null;
+
+    // Find which shape owns this instanceId
+    for (const [shapeId, shapeMap] of group.instancesByShape) {
+      if (shapeMap.has(instanceId)) {
+        return { shapeId, instanceId };
+      }
+    }
+    return null;
+  }
+
   // Expose a setOrigin method to set the group's position
   function setOrigin(vec3) {
     originGroup.position.copy(vec3);
@@ -639,6 +772,7 @@ export function createSymmetryRenderer(scene)
     getActiveGroupId,
     getActiveGroup,
     listShapeKeys,
+    pickAt,
     setOrigin,
     originGroup,
   };
