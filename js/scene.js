@@ -1,8 +1,13 @@
 import * as THREE from "three/webgpu";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { ARButton } from "three/addons/webxr/ARButton.js";
-import { createSymmetryRenderer } from "./symmetry-renderer.js";
 import { createText } from 'three/addons/webxr/Text2D.js';
+import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js';
+import { OculusHandModel } from 'three/addons/webxr/OculusHandModel.js';
+import { OculusHandPointerModel } from 'three/addons/webxr/OculusHandPointerModel.js';
+
+import { createSymmetryRenderer } from "./symmetry-renderer.js";
 
 export { THREE };
 
@@ -38,16 +43,21 @@ export async function setupRendering( appEl )
   // Only enable AR if supported
   let symmetryRenderer;
   let instructionText = null;
+  let rightInstructionText = null;
   let needsInitialPlacement = false;
   async function setupAR() {
     if (navigator.xr && await navigator.xr.isSessionSupported?.('immersive-ar')) {
       document.body.appendChild(ARButton.createButton(renderer, {
-        optionalFeatures: ['local-floor']
+        optionalFeatures: [ 'local-floor', 'hand-tracking', ],
       }));
 
       instructionText = createText( 'Grip to move the model', 0.03 );
       scene.add( instructionText );
       instructionText.visible = false;
+
+      rightInstructionText = createText( 'Grip to move the model', 0.03 );
+      scene.add( rightInstructionText );
+      rightInstructionText.visible = false;
 
       // Toggle scene background/fog and orbit controls for AR passthrough
       const _origBackground = scene.background;
@@ -60,6 +70,7 @@ export async function setupRendering( appEl )
         scene.fog = null;
         controls.enabled = false;
         instructionText.visible = true;
+        rightInstructionText.visible = true;
         needsInitialPlacement = true;
       });
       renderer.xr.addEventListener('sessionend', () => {
@@ -70,6 +81,7 @@ export async function setupRendering( appEl )
         controls.target.copy( _origControlsTarget );
         controls.enabled = true;
         instructionText.visible = false;
+        rightInstructionText.visible = false;
         symmetryRenderer.setOrigin( new THREE.Vector3(0, 0, 0) );
         onResize();
       });
@@ -79,16 +91,41 @@ export async function setupRendering( appEl )
   
   symmetryRenderer = createSymmetryRenderer( scene );
   
+  const controllerModelFactory = new XRControllerModelFactory();
+  const handModelFactory = new XRHandModelFactory();
   for (let i = 0; i < 2; i++) {
     const controller = renderer.xr.getController( i );
+    controller.addEventListener( 'connected', (event) => {
+      if (event.data.handedness === 'left' && instructionText) {
+        controller.add( instructionText );
+        instructionText.position.set( 0, 0.1, 0 );
+        instructionText.rotation.set( -Math.PI / 6, Math.PI / 6, 0 );
+      }
+      if (event.data.handedness === 'right' && rightInstructionText) {
+        controller.add( rightInstructionText );
+        rightInstructionText.position.set( 0, 0.1, 0 );
+        rightInstructionText.rotation.set( -Math.PI / 6, -Math.PI / 6, 0 );
+      }
+    });
     controller.addEventListener( 'squeezestart', () => {
       controller.attach( symmetryRenderer.originGroup );
     });
     controller.addEventListener( 'squeezeend', () => {
       scene.attach( symmetryRenderer.originGroup );
       if (instructionText) instructionText.visible = false;
+      if (rightInstructionText) rightInstructionText.visible = false;
     });
     scene.add( controller );
+
+    const controllerGrip = renderer.xr.getControllerGrip( i );
+    controllerGrip.add( controllerModelFactory.createControllerModel( controllerGrip ) );
+    scene.add( controllerGrip );
+
+    const hand = renderer.xr.getHand( i );
+    hand.add(handModelFactory.createHandModel(hand, 'mesh'));
+    // const handPointer = new OculusHandPointerModel( hand, controller );
+    // hand.add( handPointer );
+    scene.add( hand );
   }
 
   window.addEventListener("resize", onResize);
@@ -109,10 +146,6 @@ export async function setupRendering( appEl )
           .addScaledVector(_forward, 0.7)
           .add(new THREE.Vector3(0, -0.2, 0))
       );
-      if (instructionText) {
-        instructionText.position.copy(_viewerPos).addScaledVector(_forward, 0.6);
-        instructionText.quaternion.copy(_viewerQuat);
-      }
       needsInitialPlacement = false;
     }
   });
