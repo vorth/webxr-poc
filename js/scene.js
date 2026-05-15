@@ -1,6 +1,6 @@
 import * as THREE from "three/webgpu";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { ARButton } from "three/addons/webxr/ARButton.js";
+import { XRButton } from "three/addons/webxr/XRButton.js";
 import { createText } from 'three/addons/webxr/Text2D.js';
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js';
@@ -40,14 +40,15 @@ export async function setupRendering( appEl )
   // const grid = new THREE.GridHelper(50, 50, 0xffffff, 0xffffff);
   // scene.add(grid);
 
-  // Only enable AR if supported
+  // Offer AR with VR fallback
   let symmetryRenderer;
   let instructionText = null;
   let rightInstructionText = null;
   let needsInitialPlacement = false;
-  async function setupAR() {
-    if (navigator.xr && await navigator.xr.isSessionSupported?.('immersive-ar')) {
-      document.body.appendChild(ARButton.createButton(renderer, {
+  async function setupXR() {
+    // only show the button if at least VR is supported. 
+    if (navigator.xr && await navigator.xr.isSessionSupported?.('immersive-vr')) {
+      document.body.appendChild(XRButton.createButton(renderer, {
         optionalFeatures: [ 'local-floor', 'hand-tracking', ],
       }));
 
@@ -59,15 +60,17 @@ export async function setupRendering( appEl )
       scene.add( rightInstructionText );
       rightInstructionText.visible = false;
 
-      // Toggle scene background/fog and orbit controls for AR passthrough
       const _origBackground = scene.background;
       const _origFog = scene.fog;
       const _origFov = camera.fov;
       const _origCameraPos = camera.position.clone();
       const _origControlsTarget = controls.target.clone();
       renderer.xr.addEventListener('sessionstart', () => {
-        scene.background = null;
-        scene.fog = null;
+        const isAR = renderer.xr.getSession()?.environmentBlendMode !== 'opaque';
+        if (isAR) {
+          scene.background = null;
+          scene.fog = null;
+        }
         controls.enabled = false;
         instructionText.visible = true;
         rightInstructionText.visible = true;
@@ -87,7 +90,7 @@ export async function setupRendering( appEl )
       });
     }
   }
-  setupAR();
+  setupXR();
   
   symmetryRenderer = createSymmetryRenderer( scene );
   
