@@ -93,6 +93,7 @@ export async function setupRendering( appEl )
         instructionText.visible = false;
         rightInstructionText.visible = false;
         symmetryRenderer.setOrigin( new THREE.Vector3(0, 0, 0) );
+        symmetryRenderer.originGroup.scale.set( 1, 1, 1 );
         onResize();
       });
     }
@@ -101,11 +102,28 @@ export async function setupRendering( appEl )
   
   symmetryRenderer = createSymmetryRenderer( scene );
   
+  // Scaling gesture state (shared with animation loop)
+  const _gripControllers = [null, null];
+  const _gripPressed = [false, false];
+  let _scalingActive = false;
+  let _scaleInitialDist = 0;
+  const _scaleInitialScale = new THREE.Vector3();
+
   if ( !hasTouchscreen ) { // no controllers or instructions for touchscreens
     const controllerModelFactory = new XRControllerModelFactory();
     const handModelFactory = new XRHandModelFactory();
+
+    const _getControllerDist = () => {
+      const p0 = new THREE.Vector3();
+      const p1 = new THREE.Vector3();
+      _gripControllers[0].getWorldPosition(p0);
+      _gripControllers[1].getWorldPosition(p1);
+      return p0.distanceTo(p1);
+    };
+
     for (let i = 0; i < 2; i++) {
       const controller = renderer.xr.getController( i );
+      _gripControllers[i] = controller;
       controller.addEventListener( 'connected', (event) => {
         if (event.data.handedness === 'left' && instructionText) {
           controller.add( instructionText );
@@ -119,10 +137,33 @@ export async function setupRendering( appEl )
         }
       });
       controller.addEventListener( 'squeezestart', () => {
-        controller.attach( symmetryRenderer.originGroup );
+        _gripPressed[i] = true;
+        if ( _gripPressed[0] && _gripPressed[1] ) {
+          // Both grips held – enter two-hand scale mode
+          scene.attach( symmetryRenderer.originGroup );
+          _scalingActive = true;
+          _scaleInitialDist = _getControllerDist();
+          _scaleInitialScale.copy( symmetryRenderer.originGroup.scale );
+        } else {
+          // Single grip – move the model with this controller
+          _scalingActive = false;
+          controller.attach( symmetryRenderer.originGroup );
+        }
       });
       controller.addEventListener( 'squeezeend', () => {
-        scene.attach( symmetryRenderer.originGroup );
+        _gripPressed[i] = false;
+        if ( _scalingActive ) {
+          _scalingActive = false;
+          const otherIdx = 1 - i;
+          if ( _gripPressed[otherIdx] ) {
+            // Other grip still held – revert to single-grip move
+            _gripControllers[otherIdx].attach( symmetryRenderer.originGroup );
+          } else {
+            scene.attach( symmetryRenderer.originGroup );
+          }
+        } else {
+          scene.attach( symmetryRenderer.originGroup );
+        }
         if (instructionText) instructionText.visible = false;
         if (rightInstructionText) rightInstructionText.visible = false;
       });
@@ -147,6 +188,14 @@ export async function setupRendering( appEl )
   const _viewerQuat = new THREE.Quaternion();
   renderer.setAnimationLoop(() => {
     controls.update();
+    if ( _scalingActive && _scaleInitialDist > 0 && _gripControllers[0] && _gripControllers[1] ) {
+      const p0 = new THREE.Vector3();
+      const p1 = new THREE.Vector3();
+      _gripControllers[0].getWorldPosition(p0);
+      _gripControllers[1].getWorldPosition(p1);
+      const factor = p0.distanceTo(p1) / _scaleInitialDist;
+      symmetryRenderer.originGroup.scale.copy(_scaleInitialScale).multiplyScalar(factor);
+    }
     renderer.render(scene, camera);
     if (needsInitialPlacement && renderer.xr.isPresenting) {
       const xrCamera = renderer.xr.getCamera();
