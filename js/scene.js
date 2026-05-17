@@ -45,6 +45,7 @@ export async function setupRendering( appEl )
   let instructionText = null;
   let rightInstructionText = null;
   let needsInitialPlacement = false;
+  let hasTouchscreen = false;
   async function setupXR() {
     // only show the button if at least VR is supported. 
     if (navigator.xr && await navigator.xr.isSessionSupported?.('immersive-vr')) {
@@ -66,7 +67,13 @@ export async function setupRendering( appEl )
       const _origCameraPos = camera.position.clone();
       const _origControlsTarget = controls.target.clone();
       renderer.xr.addEventListener('sessionstart', () => {
-        const isAR = renderer.xr.getSession()?.environmentBlendMode !== 'opaque';
+        const session = renderer.xr.getSession();
+        const sources = Array.from(session.inputSources);
+        hasTouchscreen = sources.some(s => s.targetRayMode === 'screen');
+        const hasControllers  = sources.some(s => s.targetRayMode === 'tracked-pointer' && s.gamepad);
+        const hasHands        = sources.some(s => s.hand != null);
+
+        const isAR = session?.environmentBlendMode !== 'opaque';
         if (isAR) {
           scene.background = null;
           scene.fog = null;
@@ -94,41 +101,43 @@ export async function setupRendering( appEl )
   
   symmetryRenderer = createSymmetryRenderer( scene );
   
-  const controllerModelFactory = new XRControllerModelFactory();
-  const handModelFactory = new XRHandModelFactory();
-  for (let i = 0; i < 2; i++) {
-    const controller = renderer.xr.getController( i );
-    controller.addEventListener( 'connected', (event) => {
-      if (event.data.handedness === 'left' && instructionText) {
-        controller.add( instructionText );
-        instructionText.position.set( 0, 0.1, 0 );
-        instructionText.rotation.set( -Math.PI / 6, Math.PI / 6, 0 );
-      }
-      if (event.data.handedness === 'right' && rightInstructionText) {
-        controller.add( rightInstructionText );
-        rightInstructionText.position.set( 0, 0.1, 0 );
-        rightInstructionText.rotation.set( -Math.PI / 6, -Math.PI / 6, 0 );
-      }
-    });
-    controller.addEventListener( 'squeezestart', () => {
-      controller.attach( symmetryRenderer.originGroup );
-    });
-    controller.addEventListener( 'squeezeend', () => {
-      scene.attach( symmetryRenderer.originGroup );
-      if (instructionText) instructionText.visible = false;
-      if (rightInstructionText) rightInstructionText.visible = false;
-    });
-    scene.add( controller );
+  if ( !hasTouchscreen ) { // no controllers or instructions for touchscreens
+    const controllerModelFactory = new XRControllerModelFactory();
+    const handModelFactory = new XRHandModelFactory();
+    for (let i = 0; i < 2; i++) {
+      const controller = renderer.xr.getController( i );
+      controller.addEventListener( 'connected', (event) => {
+        if (event.data.handedness === 'left' && instructionText) {
+          controller.add( instructionText );
+          instructionText.position.set( 0, 0.1, 0 );
+          instructionText.rotation.set( -Math.PI / 6, Math.PI / 6, 0 );
+        }
+        if (event.data.handedness === 'right' && rightInstructionText) {
+          controller.add( rightInstructionText );
+          rightInstructionText.position.set( 0, 0.1, 0 );
+          rightInstructionText.rotation.set( -Math.PI / 6, -Math.PI / 6, 0 );
+        }
+      });
+      controller.addEventListener( 'squeezestart', () => {
+        controller.attach( symmetryRenderer.originGroup );
+      });
+      controller.addEventListener( 'squeezeend', () => {
+        scene.attach( symmetryRenderer.originGroup );
+        if (instructionText) instructionText.visible = false;
+        if (rightInstructionText) rightInstructionText.visible = false;
+      });
+      scene.add( controller );
 
-    const controllerGrip = renderer.xr.getControllerGrip( i );
-    controllerGrip.add( controllerModelFactory.createControllerModel( controllerGrip ) );
-    scene.add( controllerGrip );
+      const controllerGrip = renderer.xr.getControllerGrip( i );
+      controllerGrip.add( controllerModelFactory.createControllerModel( controllerGrip ) );
+      scene.add( controllerGrip );
 
-    const hand = renderer.xr.getHand( i );
-    hand.add(handModelFactory.createHandModel(hand, 'mesh'));
-    // const handPointer = new OculusHandPointerModel( hand, controller );
-    // hand.add( handPointer );
-    scene.add( hand );
+      const hand = renderer.xr.getHand( i );
+      hand.add(handModelFactory.createHandModel(hand, 'mesh'));
+      // const handPointer = new OculusHandPointerModel( hand, controller );
+      // hand.add( handPointer );
+      scene.add( hand );
+    }
   }
 
   window.addEventListener("resize", onResize);
