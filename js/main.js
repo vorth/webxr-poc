@@ -56,6 +56,7 @@ const loadModel = ( url ) => {
 
 const MENU_ITEMS = [
   { label: 'Trussed Icosidodec', id: 'btn-a', url: 'https://raw.githubusercontent.com/vorth/vzome-sharing/main/2026/06/14/14-29-24-543Z-SUMaC-Trussed-Icosidodecahedron/SUMaC-Trussed-Icosidodecahedron.vZome' },
+  { label: 'Trussed Blue/Yellow Dome', id: 'btn-e', url: 'https://raw.githubusercontent.com/vorth/vzome-sharing/main/2026/07/18/23-07-21-566Z-Trussed-Frequency-4-Blue-Yellow-Dome/Trussed-Frequency-4-Blue-Yellow-Dome.vZome' },
   { label: 'JK 4D CRF', id: 'btn-c', url: 'https://raw.githubusercontent.com/vorth/vzome-sharing/main/2026/01/08/04-16-34-229Z-Potentially-new-polytope/Potentially-new-polytope.vZome' },
   { label: 'C960', id: 'btn-b', url: 'https://gist.githubusercontent.com/vorth/2d880fe088bf3bf16a866d48e5057d43/raw/61eeec45fa2d7424c2e2fd3355fc12530256c7a6/C960-round.vZome' },
   { label: 'Ghee Beom Kim snub', id: 'btn-d', url: 'https://raw.githubusercontent.com/vorth/vzome-sharing/main/2025/12/31/02-49-18-356Z-Ghee-Beom-Kim-snub-design/Ghee-Beom-Kim-snub-design.vZome' },
