@@ -291,11 +291,22 @@ export function createSymmetryRenderer(scene)
     attachAttributes(mesh.geometry, orientBuffer, translationBuffer, colorIndexBuffer, highlightBuffer, pickingIdBuffer);
     initializeIdentityMatrices(mesh, INITIAL_SHAPE_CAPACITY);
     mesh.count = 0;
+    // Three's default frustum culling uses meshGeometry's bounding sphere, which only
+    // covers the single un-instanced base shape (e.g. one ball near the local origin) --
+    // it knows nothing about the per-instance translation applied in the vertex shader via
+    // positionNode. As the camera frustum tightens (e.g. zooming in), that tiny bounding
+    // sphere can fall outside it well before the actual (scattered) instances do, causing
+    // Three to cull the whole mesh at once -- every instance of this shape disappears
+    // together, while other shapes with different local bounding spheres stay visible.
+    // Disabling frustum culling here trades a small amount of GPU work (never culled, even
+    // when genuinely off-screen) for correctness.
+    mesh.frustumCulled = false;
 
     // Picking mesh shares the same geometry (and therefore all instanced attributes)
     const pickingMesh = new THREE.InstancedMesh(meshGeometry, pickingMaterial, INITIAL_SHAPE_CAPACITY);
     initializeIdentityMatrices(pickingMesh, INITIAL_SHAPE_CAPACITY);
     pickingMesh.count = 0;
+    pickingMesh.frustumCulled = false;
 
     return {
       slotId,
@@ -461,6 +472,10 @@ export function createSymmetryRenderer(scene)
     const nextMesh = new THREE.InstancedMesh(nextGeometry, group.gpu.material, expandedCapacity);
     initializeIdentityMatrices(nextMesh, expandedCapacity);
     nextMesh.count = previousMesh.count;
+    // See the matching comment in createShapeEntry: bounding-sphere-based frustum culling
+    // doesn't account for per-instance translation, so it's disabled on every mesh here too
+    // (this replacement mesh doesn't inherit frustumCulled from previousMesh automatically).
+    nextMesh.frustumCulled = false;
 
     if (previousMesh.parent === originGroup) {
       originGroup.remove(previousMesh);
@@ -470,6 +485,7 @@ export function createSymmetryRenderer(scene)
     const nextPickingMesh = new THREE.InstancedMesh(nextGeometry, group.gpu.pickingMaterial, expandedCapacity);
     initializeIdentityMatrices(nextPickingMesh, expandedCapacity);
     nextPickingMesh.count = previousMesh.count;
+    nextPickingMesh.frustumCulled = false;
 
     const previousPickingMesh = entry.pickingMesh;
     if (previousPickingMesh && previousPickingMesh.parent === group.gpu.pickingOriginGroup) {
